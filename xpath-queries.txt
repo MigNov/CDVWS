@@ -1,0 +1,15 @@
+GET FUNCTION LIST:
+$ xpath /home/mig/Work/Interest/myPackages/cdvws/examples/test/definition/index.cdv '//page-definition/functions/function/@name'
+
+GET PARAM LIST:
+$ xpath /home/mig/Work/Interest/myPackages/cdvws/examples/test/definition/index.cdv '//page-definition/functions/function[@name="%FUNCTION%"]/params/param'
+
+GET QUERY IDS:
+xpath /home/mig/Work/Interest/myPackages/cdvws/examples/test/definition/index.cdv '//page-definition/functions/function[@name="%FUNCTION%"]/queries/query/@id'
+
+CONDITIONS:
+
+TYPE: //page-definition/functions/function[@name="%FUNCTION%"]/queries/query[@id="main"]/conditions/condition/@type
+FIELDS: //page-definition/functions/function[@name="get_footer"]/queries/query[@id="main"]/conditions/condition/field
+
+(@id == 'main' is entry point, like for gcc, can call subqueries using different IDs)

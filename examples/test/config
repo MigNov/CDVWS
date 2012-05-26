@@ -1,0 +1,11 @@
+sql.type = mysql
+sql.host = localhost
+sql.user = root
+sql.database = cdvtest1
+sql.password.value = read://.password
+sql.password.format = base64
+
+# Just test variable that shouldn't be overwritten
+sql.connector = ado
+
+include config.d

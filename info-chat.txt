@@ -1,0 +1,66 @@
+tables: users, messages (rooms, room_user_assoc)
+
+users: id, username, password, hash ...
+messages: id, msgTime, idRoom, idUserFrom, idUserTo, message
+(rooms: id, name, idUserAdmin ...)
+(room_user_assoc: id, idUser, idRoom)
+
+Maybe load all the CDV files and save to some temporary storage (?). Fill in the structures about all definitions.
+Use //page-definition/@name as the source for GET/POST query, e.g. GET /chat.html?room-id=1 should translate to
+//page-definition[@name='chat'] (defined as follows).
+
+chat.cdv:
+=========
+
+<page-definition [name="chat"]>
+	<functions>
+		<function name="get_messages">
+			<params type="GET">
+				<param>idRoom</param>
+			</params>
+			<queries>
+				<query type="view" name="get_user_name">
+					<table>users</table>
+					<params>
+						<param name="id">%1</param>
+					</params>
+					<fields>
+						<field>username</field>
+					<fields>
+				</query>
+				<query type="view" name="get_messages|main">
+					<table>messages</table>
+					<params>
+						<param name="idRoom">%1</param>
+					</params>
+					<fields>
+						<field>msgTime</field>
+						<field>message</field>
+						<field name="nick1">#get_user_name idUserFrom</field>
+						<field name="nick2">#get_user_name idUserTo</field>
+					</fields>
+				</query>
+			</queries>
+		</function>
+	</functions>
+</page-definition>
+
+# GET /chat.html?room-id=1
+(run query)
+
+Type: Good for internal database
+<![CDATA[
+	SELECT m.msgTime, m.message,
+	(SELECT username FROM users WHERE id = m.idUserFrom) as nick1,
+	(SELECT username FROM users WHERE id = m.idUserTo  ) as nick2
+	FROM messages m
+	WHERE m.idRoom = 1
+]]>
+
+Type: Better for running real DB queries
+<![CDATA[
+	SELECT m.msgTime, u1.name, u2.name, m.message FROM messages m
+	JOIN users u1 ON u1.id = m.idUserFrom
+	JOIN users u2 ON u2.id = m.idUserTo
+	WHERE m.idRoom = %ID_ROOM%
+]]>

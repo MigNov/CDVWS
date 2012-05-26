@@ -1,0 +1,39 @@
+<page-definition>
+	<include type='config'>config-db</include>
+	<functions>
+		<function name='get_contents' return='array'>
+			<params />
+
+			<queries>
+				<query id='main' type='view'>
+					<table>texts</table>
+					<fields>
+						<field>text</field>
+					</fields>
+					<conditions>
+						<condition type='eq'>
+							<field>ident</field>
+							<field>index</field>
+						</condition>
+					</conditions>
+				</query>
+			</queries>
+		</function>
+		<function name='get_footer' return='string'>
+			<queries>
+				<query id='main' type='view'>
+					<table>common</table>
+					<fields>
+						<field>value</field>
+					</fields>
+					<conditions>
+						<condition type='eq'>
+							<field>name</field>
+							<field>footer</field>
+						</condition>
+					</conditions>
+				</query>
+			</queries>
+		</function>
+	</functions>
+</page-definition>

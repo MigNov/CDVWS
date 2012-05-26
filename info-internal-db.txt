@@ -1,0 +1,93 @@
+- Optional DB columns definition
+
+typedef struct tTableDef {
+	long id;
+	char *name;
+	int numFields;
+} tTableDef;
+
+typedef struct tTableFieldDef {
+	long id;
+	long idTable;
+	char *name;
+	int type;
+} tTableFieldDef;
+
+[ CREATE TABLE users(id int auto_increment, username varchar(255), password varchar(128), hash varchar(255), PRIMARY KEY(id)); ]
+
+=======+========================+========================+========================+
+   id  |        username        |      password          |          hash          |
+=======+========================+========================+========================+
+     1 |          nick1         |   passhash-for-nick1   |  conn-hash-for-nick1   |
+     2 |          nick2         |   passhash-for-nick2   |  conn-hash-for-nick2   |
+=======+========================+========================+========================+
+
+tTableDef td;
+tTableFieldDef *tfd;
+
+td = {
+	id = 1,
+	name = "users",
+	numFields = 4
+};
+
+tdf = {
+	0 = {
+		id = 1,
+		idTable = 1,
+		name = "id",
+		length = sizeof(long),
+		type = 1
+	},
+	1 = {
+		id = 2,
+		idTable = 1,
+		name = "username",
+		type = 2
+	},
+	2 = {
+		id = 3,
+		idTable = 1,
+		name = "password",
+		type = 2
+	},
+	3 = {
+		id = 4,
+		idTable = 1,
+		name = "hash",
+		type = 2
+	}
+}
+
+TYPES:
+	int
+	long
+	shortstr - 1st byte for length, up to 256 bytes
+	mediumstr - 2 bytes for length, up to 65536 bytes
+	str - 3 bytes length, up to 16 MiB
+	longstr - 4 bytes length, theoretical limit up to 4 GiB
+	file - save to a separate file on disk
+
+Database format:
+	CDVDB<totalHeaderSize><header>[<totalDataSize><data>]
+
+header:
+	offset 00 - 02 = header length (3 bytes)
+	offset 03 - 04 = table count (2 bytes)
+	offset 05 - length = table definition data ( sizeof(tdd) * numTables )
+
+table definition data:
+	offset 00 - 01 = table definition length (2 bytes)
+	offset 02 - table name length (tnl)
+	offset 03 - tnl = table name
+	offset tnl - table field count
+	offset tnl+1 - length = field definition data ( sizeof(fdd) * numFields )
+
+field definition data:
+	offset 00 = field defition length
+	offset 01 = type (TODO: write a list of types)
+	offset 02 = field name length
+	offset 03 - length = field name
+
+-> Option to save just tables definition
+-> Option to save the data, but beware of fragmentation
