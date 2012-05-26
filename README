@@ -1,0 +1,46 @@
+  Config-View-Definition WebServer
+ ==================================
+
+This application has been written as the lightweight form of the
+webserver that *should* support internal database, called CDB,
+eventually IDB, the webserver stack itself, the XML-based scripting
+language.
+
+The name has been derived from it's designed functionality (please see
+design-document.pdf for more information) as the project should be
+having config, view, definition directories with files in them.
+
+The structure should be seen in the examples directory:
+ - config & config.d should contain all the configuration data,
+   including the connection strings and the others
+ - definition directory should contain all the XML-based definition
+   files defining the system functions to be called from within the
+   views
+ - views directory should be having the raw HTML/CSS layout that
+   is publicly accessible
+
+Please refer to design-document.pdf for more information.
+
+The whole application is written in C language with requirements for
+just few libraries, like libxml2 and others.
+
+Terminology
+-----------
+
+This app should be referred to as CDVWS or CDV-Webserver.
+
+Pre-requisite software
+----------------------
+
+Where versions are noted below these are the versions tested to definitely
+work. For some of them you may be able to run with earlier releases, so
+please report any success to the mailing lists
+
+ libxml2
+ ... TO BE DONE ...
+
+Copyright /  License
+--------------------
+
+All the application code is covered under the GPL licence.
+
