@@ -234,10 +234,14 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		DPRINTF("%s: Line %d is '%s'\n", __FUNCTION__, i+1, t.tokens[i]);
 	}
 
+	free_tokens(t);
+
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
-	free_tokens(t);
+	char tmp[1024] = { 0 };
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 200 OK\nContent-Type: text/plain\n\nThis is just a test.\n");
+	write_common(io, connected, tmp, strlen(tmp));
 
 	return 1;
 	//return (strcmp(buf, "TESTQUIT") == 0) ? 1 : 0;
@@ -261,9 +265,9 @@ int run_server(int port, char *pk, char *pub, char *root_key)
 				_exit(1);
 
 			accept_loop(ctx, sock, process_request_common);
-			close(sock);
 			SSL_CTX_free(ctx);
 			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			close(sock);
 			exit(0);
 		}
 		else

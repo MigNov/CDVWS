@@ -103,7 +103,7 @@ int process_request_ssl(SSL *ssl, int s, struct sockaddr_in client_addr, tProces
 				break;
 
 		if (strlen(buf) == 0)
-			break;
+			return 1;
 
 		len = r;
 		/* Set buffer */
@@ -152,7 +152,12 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 		}
 	}
 
-	return (req(NULL, NULL, s, client_addr, _tcp_buf, _tcp_total));
+	if (req(NULL, NULL, s, client_addr, _tcp_buf, _tcp_total) == 1) {
+		close(s);
+		return 1;
+	}
+
+	return 0;
 }
 
 int process_request(SSL *ssl, int s, struct sockaddr_in client_addr, tProcessRequest req)
