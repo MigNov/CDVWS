@@ -110,6 +110,13 @@ void project_info_init(void)
 	project_info.file_config = NULL;
 	project_info.dir_defs = NULL;
 	project_info.dir_views = NULL;
+
+	project_info.host_http = NULL;
+	project_info.host_secure = NULL;
+	project_info.cert_dir = NULL;
+	project_info.cert_root = NULL;
+	project_info.cert_pk = NULL;
+	project_info.cert_pub = NULL;
 }
 
 void project_info_fill(void)
@@ -121,6 +128,13 @@ void project_info_fill(void)
 	project_info.dir_defs = config_get("project", "config.directory.definitions");
 	project_info.dir_views = config_get("project", "config.directory.views");
 
+	project_info.host_http = config_get("host", "http");
+	project_info.host_secure = config_get("host", "secure");
+	project_info.cert_dir = config_get("host", "certificate.dir");
+	project_info.cert_root = config_get("host", "certificate.root");
+	project_info.cert_pk = config_get("host", "certificate.private");
+	project_info.cert_pub = config_get("host", "certificate.public");
+
 	DPRINTF("%s: Project information structure set\n", __FUNCTION__);
 }
 
@@ -128,7 +142,32 @@ void project_info_dump(void)
 {
 	int num = 0;
 
+	printf("\nProject hosting information dump:\n");
+
+	if (project_info.host_http != NULL) {
+		printf("\tHTTP host: '%s'\n", project_info.host_http);
+		num++;
+	}
+	if (project_info.host_secure != NULL) {
+		printf("\tHTTPS host: '%s'\n", project_info.host_secure);
+		num++;
+	}
+	if (project_info.cert_dir != NULL) {
+		printf("\tHTTPS certificate directory: '%s'\n", project_info.cert_dir);
+		num++;
+	}
+	if (project_info.cert_root != NULL) {
+		printf("\tHTTPS root certificate: '%s'\n", project_info.cert_root);
+		num++;
+	}
+	if ((project_info.cert_pk != NULL) && (project_info.cert_pub != NULL)) {
+		printf("\tHTTPS certificates: private '%s', public '%s'\n",
+			project_info.cert_pk, project_info.cert_pub);
+		num++;
+	}
+
 	printf("\nProject information dump:\n");
+
 	if (project_info.name != NULL) {
 		printf("\tProject name: '%s'\n", project_info.name);
 		num++;
@@ -174,6 +213,18 @@ char *project_info_get(char *type)
 		return strdup(project_info.dir_defs);
 	if ((project_info.dir_views != NULL) && (strcmp(type, "dir_views") == 0))
 		return strdup(project_info.dir_views);
+	if ((project_info.host_http != NULL) && (strcmp(type, "host_http") == 0))
+		return strdup(project_info.host_http);
+	if ((project_info.host_secure != NULL) && (strcmp(type, "host_secure") == 0))
+		return strdup(project_info.host_secure);
+	if ((project_info.cert_dir != NULL) && (strcmp(type, "cert_dir") == 0))
+		return strdup(project_info.cert_dir);
+	if ((project_info.cert_root != NULL) && (strcmp(type, "cert_root") == 0))
+		return strdup(project_info.cert_root);
+	if ((project_info.cert_pk != NULL) && (strcmp(type, "cert_pk") == 0))
+		return strdup(project_info.cert_pk);
+	if ((project_info.cert_pub != NULL) && (strcmp(type, "cert_pub") == 0))
+		return strdup(project_info.cert_pub);
 
 	return NULL;
 }
@@ -186,6 +237,12 @@ void project_info_cleanup(void)
 	free(project_info.file_config);
 	free(project_info.dir_defs);
 	free(project_info.dir_views);
+	free(project_info.host_http);
+	free(project_info.host_secure);
+	free(project_info.cert_dir);
+	free(project_info.cert_root);
+	free(project_info.cert_pk);
+	free(project_info.cert_pub);
 
 	/* To set to NULLs */
 	project_info_init();
@@ -302,7 +359,74 @@ int load_project(char *project_file)
 	config_variable_dump(NULL);
 
 finish:
-	cleanup();
+	//cleanup();
+
+	return ret;
+}
+
+int _try_project_match(char *pd, char *host)
+{
+	int ret;
+
+	struct dirent *de = NULL;
+	DIR *d = opendir(pd);
+
+	if (d == NULL)
+		ret = -EIO;
+	else {
+		ret = -ENOENT;
+		while ((de = readdir(d)) != NULL) {
+			if (strstr(de->d_name, ".project") != NULL) {
+				char tmp[4096] = { 0 };
+
+				snprintf(tmp, sizeof(tmp), "%s/%s",
+					pd, de->d_name);
+
+				if (load_project(tmp) == 0) {
+					char *host_http = project_info_get("host_http");
+					char *host_secure = project_info_get("host_secure");
+
+					if ((host_http != NULL)
+						&& ((strcmp(host_http, host) == 0)
+							|| (strcmp(host_secure, host) == 0))) {
+						ret = 0;
+						break;
+					}
+
+					cleanup();
+				}
+			}
+		}
+	}
+	closedir(d);
+
+	return ret;
+}
+
+int find_project_for_web(char *directory, char *host)
+{
+	int ret;
+	struct dirent *de = NULL;
+	DIR *d = opendir(directory);
+	if (d == NULL)
+		ret = -EBADF;
+	else {
+		ret = -ENOENT;
+		while ((de = readdir(d)) != NULL) {
+			char tmp[4096] = { 0 };
+
+			if (de->d_name[0] != '.') {
+				snprintf(tmp, sizeof(tmp), "%s/%s", directory,
+					de->d_name);
+
+				if (_try_project_match(tmp, host) == 0) {
+					ret = 0;
+					break;
+				}
+			}
+		}
+	}
+	closedir(d);
 
 	return ret;
 }

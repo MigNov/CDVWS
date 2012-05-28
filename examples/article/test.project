@@ -1,9 +1,0 @@
-# Project settings
-project.name = Test project
-project.administrator.name = Michal Novotny
-project.administrator.email = mignov@gmail.com
-
-# Project configuration
-project.config.file = config
-project.config.directory.definitions = definition
-project.config.directory.views = view

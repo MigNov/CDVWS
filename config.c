@@ -171,6 +171,7 @@ int config_handle_line(char *directory, char *space, char *line)
 
 					ret = 0;
 				}
+				closedir(d);
 			}
 		}
 		else

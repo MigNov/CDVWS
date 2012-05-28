@@ -77,6 +77,12 @@ typedef struct tProjectInformation {
 	char *file_config;
 	char *dir_defs;
 	char *dir_views;
+	char *host_http;
+	char *host_secure;
+	char *cert_dir;
+	char *cert_root;
+	char *cert_pk;
+	char *cert_pub;
 } tProjectInformation;
 
 typedef struct tAttr {
@@ -277,6 +283,7 @@ void project_info_fill(void);
 char *project_info_get(char *type);
 void project_info_dump(void);
 void project_info_cleanup(void);
+int find_project_for_web(char *directory, char *host);
 
 /* Module stuff */
 char *_modules_directory;
@@ -298,5 +305,6 @@ char *database_format_query(char *xmlFile, char *table, char *type);
 /* Sockets stuff */
 int tcp_listen(int port);
 int socket_has_data(int sfd, long maxtime);
+int write_common(BIO *io, int sock, char *data, int len);
 
 #endif

@@ -187,6 +187,36 @@ int test_idb_queries(void)
 	return 0;
 }
 
+int http_host_unknown(BIO *io, int connected, char *host)
+{
+	char tmp[TCP_BUF_SIZE] = { 0 };
+
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\n\n<html>"
+		"<head><title>Server unknown</title></head><body>"
+		"<h1>Server unknown</h1>We are sorry but server project "
+		"cannot be resolved.<hr />Server is running on CDV "
+		"WebServer v0.0.1</body></html>");
+
+	write_common(io, connected, tmp, strlen(tmp));
+	return 1;
+}
+
+int http_host_page_not_found(BIO *io, int connected, char *path)
+{
+	char tmp[TCP_BUF_SIZE] = { 0 };
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\nContent-Type: text/html\n\n"
+			"<html><head><title>Not Found</title><body><h1>Not Found</h1>"
+			"We are sorry but path %s you requested cannot be found.<br /><hr />"
+			"<b><u>%s</u></b> running on CDV WebServer v0.0.1. Please contact "
+			"site administrator <a target=\"_blank\" href=\"mailto:%s\">%s</a>."
+			"<body></html>\n",
+				path, project_info_get("name"), project_info_get("admin_mail"),
+				project_info_get("admin_name"));
+
+	write_common(io, connected, tmp, strlen(tmp));
+	return 1;
+}
+
 int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len)
 {
 	int i;
@@ -239,10 +269,12 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
-	char tmp[1024] = { 0 };
-	snprintf(tmp, sizeof(tmp), "HTTP/1.1 200 OK\nContent-Type: text/plain\n\nThis is just a test.\n");
-	write_common(io, connected, tmp, strlen(tmp));
+	if (find_project_for_web("examples", host) != 0)
+		return http_host_unknown(io, connected, host);
 
+	http_host_page_not_found(io, connected, path);
+
+	cleanup();
 	return 1;
 	//return (strcmp(buf, "TESTQUIT") == 0) ? 1 : 0;
 }

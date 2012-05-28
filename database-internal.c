@@ -683,9 +683,11 @@ void idb_free(void)
 	idb_fields_num = 0;
 	idb_tabdata_num = 0;
 
-	tss = idb_get_time( TIME_CURRENT );
-	timespecsub(&tss, &_idb_session_start, &ts);
-        myTime = ((ts.tv_sec * 1000000000) + ts.tv_nsec) / (float)1000;
+	if ((_idb_session_start.tv_nsec > 0) || (_idb_session_start.tv_sec > 0)) {
+		tss = idb_get_time( TIME_CURRENT );
+		timespecsub(&tss, &_idb_session_start, &ts);
+	        myTime = ((ts.tv_sec * 1000000000) + ts.tv_nsec) / (float)1000;
+	}
 
 	/* Log the session time */
 	if (_idb_querylog != NULL) {
@@ -708,13 +710,15 @@ void idb_free(void)
 		close(fd);
 	}
 
-	DPRINTF("%s: Queries = { select: %d, insert: %d, update: %d, delete: %d, create: %d, drop: %d, total: %d }\n",
-		__FUNCTION__,
-		_idb_num_queries_select, _idb_num_queries_insert, _idb_num_queries_update, _idb_num_queries_delete,
-		_idb_num_queries_create, _idb_num_queries_drop, _idb_num_queries);
+	if (myTime > -1) {
+		DPRINTF("%s: Queries = { select: %d, insert: %d, update: %d, delete: %d, create: %d, drop: %d, total: %d }\n",
+			__FUNCTION__,
+			_idb_num_queries_select, _idb_num_queries_insert, _idb_num_queries_update, _idb_num_queries_delete,
+			_idb_num_queries_create, _idb_num_queries_drop, _idb_num_queries);
 
-	DPRINTF("%s: Session finished in %.3f ms (%.3f s), %d queries processed\n", __FUNCTION__,
-		myTime, myTime / 1000., _idb_num_queries);
+		DPRINTF("%s: Session finished in %.3f ms (%.3f s), %d queries processed\n", __FUNCTION__,
+			myTime, myTime / 1000., _idb_num_queries);
+	}
 
 	_idb_num_queries = 0;
 }
