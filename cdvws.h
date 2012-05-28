@@ -3,6 +3,7 @@
 
 /* For now it doesn't work without internal DB */
 #define USE_INTERNAL_DB
+#define USE_SSL
 
 #include <time.h>
 #include <stdio.h>
@@ -14,11 +15,31 @@
 #include <string.h>
 #include <unistd.h>
 #include <malloc.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#ifdef USE_SSL
+#define TCP_BUF_SIZE	65536
+#include <openssl/bio.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+typedef int (tProcessRequest)(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len);
+
+SSL_CTX *init_ssl_layer(char *private_key, char *public_key, char *root_key);
+int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req);
+int _tcp_in_progress;
+char _tcp_buf[TCP_BUF_SIZE];
+int _tcp_total;
+#endif
 
 #define	BUFSIZE		8192
 
@@ -271,7 +292,11 @@ char *xml_get(char *basefile, char *node, char *name, char *value, char *out_val
 void xml_dump(void);
 int xml_cleanup(void);
 
-/* Database stuff */
+/* General database stuff */
 char *database_format_query(char *xmlFile, char *table, char *type);
+
+/* Sockets stuff */
+int tcp_listen(int port);
+int socket_has_data(int sfd, long maxtime);
 
 #endif

@@ -187,15 +187,138 @@ int test_idb_queries(void)
 	return 0;
 }
 
+int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len)
+{
+	int i;
+	tTokenizer t;
+	char *ua = NULL;
+	char *host = NULL;
+	char *path = NULL;
+	char *method = NULL;
+
+	if ((len > 2) && (buf[len - 1] == '\n')) {
+		if (ssl == NULL)
+			buf[len - 2] = 0;
+		buf[len - 1] = 0;
+		if (ssl == NULL) {
+			len--;
+			buf[len - 1] = 0;
+		}
+		len--;
+	}
+
+	DPRINTF("%s: Entering with following data '%s' (%d)\n", __FUNCTION__, buf, len);
+
+	t = tokenize(buf, "\n");
+	for (i = 0; i < t.numTokens; i++) {
+		if (t.tokens[i][ strlen(t.tokens[i]) - 1 ] == 13)
+			t.tokens[i][ strlen(t.tokens[i]) - 1 ] = 0;
+
+		if (i == 0) {
+			tTokenizer t2;
+
+			t2 = tokenize(t.tokens[i], " ");
+			if ((t2.numTokens == 3) && (strncmp(t2.tokens[2], "HTTP/", 5) == 0)) {
+				method = strdup( t2.tokens[0] );
+				path = strdup( t2.tokens[1] );
+			}
+			free_tokens(t2);
+		}
+		else
+		if (strncmp(t.tokens[i], "User-Agent: ", 12) == 0)
+			ua = strdup(t.tokens[i] + 12);
+		else
+		if (strncmp(t.tokens[i], "Host: ", 6) == 0)
+			host = strdup(t.tokens[i] + 6);
+
+		DPRINTF("%s: Line %d is '%s'\n", __FUNCTION__, i+1, t.tokens[i]);
+	}
+
+	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
+		(ssl == NULL) ? "http" : "https", host, path, ua);
+
+	free_tokens(t);
+
+	return 1;
+	//return (strcmp(buf, "TESTQUIT") == 0) ? 1 : 0;
+}
+
+int run_server(int port, char *pk, char *pub, char *root_key)
+{
+	if ((port < 0) || (port > 65535))
+		return -EINVAL;
+
+	/* Applicable only for PK and PUB set, i.e. SSL connection */
+	if ((pk != NULL) && (pub != NULL) && (root_key != NULL)) {
+		if (fork() == 0) {
+			int sock;
+			SSL_CTX *ctx = NULL;
+
+			DPRINTF("%s: Opening SSL server on port %d\n",
+				__FUNCTION__, port);
+			ctx = init_ssl_layer(pk, pub, root_key);
+			if ((sock = tcp_listen(port)) == -1)
+				_exit(1);
+
+			accept_loop(ctx, sock, process_request_common);
+			close(sock);
+			SSL_CTX_free(ctx);
+			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			exit(0);
+		}
+		else
+			wait(NULL);
+
+		wait(NULL);
+	}
+
+	/* Applicable only for PK and PUB unset, i.e. non-SSL connection */
+	if (port > 0) {
+		if (fork() == 0) {
+			int sock;
+
+			DPRINTF("%s: Opening server on port %d\n", __FUNCTION__, port);
+			if ((sock = tcp_listen(port)) == -1)
+				_exit(1);
+
+			accept_loop(NULL, sock, process_request_common);
+
+			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			close(sock);
+			exit(0);
+		}
+		else
+			wait(NULL);
+
+		wait(NULL);
+	}
+
+	return 0;
+}
+
+void run_servers(int port, int ssl_port)
+{
+	if ((port > 0) && (fork() == 0))
+		run_server(port, NULL, NULL, NULL);
+
+	if ((ssl_port > 0) && (fork() == 0))
+		run_server(ssl_port, "certs/server-key.private",
+			"certs/server-key.pub", "certs/rootcert.pem");
+}
+
 int main(void)
 {
 	int i;
+
+	run_servers(2305, 2306);
 
 	//i = test_xml_query_data();
 	//i = test_idb();
 	i = test_idb_queries();
 
 	//i = load_project("./examples/test/test.project");
+	wait(NULL);
+	wait(NULL);
 	return i;
 }
 

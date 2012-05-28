@@ -1,5 +1,20 @@
 <page-definition>
 	<queries>
+		<tables>
+			<table name="article">
+				<fields>
+					<field type="int">id</field>
+					<field type="string">name</field>
+					<field type="string">text</field>
+				</fields>
+			</table>
+			<table name="authors">
+				<fields>
+					<field type="int">id</field>
+					<field type="string">name</field>
+				</fields>
+			</table>
+		</tables>
 		<query table="article">
 			<select>
 				<fields>

@@ -35,7 +35,7 @@ char *database_format_query(char *xmlFile, char *table, char *type)
 		for (i = 0; i < xml_numAttr; i++) {
 			if (strcmp(xattr[i].name, "field") == 0) {
 				strcat(query, xattr[i].value);
-				strcat(query, ", ");
+				strcat(query, ",");
 			}
 		}
 
