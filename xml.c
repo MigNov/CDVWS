@@ -16,6 +16,8 @@ do { fprintf(stderr, "[cdv/xml         ] " fmt , ## __VA_ARGS__); } while (0)
 do {} while(0)
 #endif
 
+int process_recursive(xmlDocPtr doc, char *xpath, int level, char *fn);
+
 int process_data(xmlDocPtr doc, xmlNodePtr node, char *xpath, int level, char *fn) {
 	char *newxpath = NULL;
 	char *data = NULL;
@@ -26,7 +28,7 @@ int process_data(xmlDocPtr doc, xmlNodePtr node, char *xpath, int level, char *f
 		data = (char *)xmlNodeListGetString(doc, node->xmlChildrenNode, 1);
 
 		if ((data != NULL) && ((strlen(data) == 0) || (data[0] == 10))) {
-			size = strlen(xpath) + strlen(node->name) + 2;
+			size = strlen(xpath) + strlen((const char *)node->name) + 2;
 			newxpath = (char *)malloc( size * sizeof(char) );
 			snprintf(newxpath, size, "%s/%s", xpath, node->name);
 
@@ -37,7 +39,7 @@ int process_data(xmlDocPtr doc, xmlNodePtr node, char *xpath, int level, char *f
 		if (data != NULL) {
 			found = 0;
 			for (i = 0; i < xml_numAttr; i++) {
-				if ((strcmp(xattr[i].name, node->name) == 0)
+				if ((strcmp(xattr[i].name, (const char *)node->name) == 0)
 					&& ((strcmp(xattr[i].node, xpath) == 0))
 					&& ((strcmp(xattr[i].value, data) == 0))
 					&& ((strcmp(xattr[i].filename, fn) == 0)))
@@ -50,7 +52,7 @@ int process_data(xmlDocPtr doc, xmlNodePtr node, char *xpath, int level, char *f
 				else
 					xattr = (tAttr *)realloc( xattr, (xml_numAttr + 1) * sizeof(tAttr) );
 
-				xattr[xml_numAttr].name = strdup(node->name);
+				xattr[xml_numAttr].name = strdup( (const char *)node->name);
 				xattr[xml_numAttr].node = strdup(xpath);
 				xattr[xml_numAttr].value = strdup(data);
 				xattr[xml_numAttr].filename = strdup(fn);
@@ -74,8 +76,6 @@ int process_recursive(xmlDocPtr doc, char *xpath, int level, char *fn)
 	xmlXPathContextPtr context;
 	xmlXPathObjectPtr op;
 	xmlNodeSetPtr nodeset;
-	xmlNodePtr node;
-	char tmp[1024] = { 0 };
 
 	context = xmlXPathNewContext(doc);
 	if (context == NULL) {

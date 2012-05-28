@@ -14,7 +14,7 @@ do {} while(0)
 
 char *database_format_query(char *xmlFile, char *table, char *type)
 {
-	int i, err, got_condition;
+	int i, got_condition;
 	char path[1024] = { 0 };
 	char query[BUFSIZE] = { 0 };
 

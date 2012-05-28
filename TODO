@@ -1,0 +1,5 @@
+- Rewrite to autotools
+- Document IDB queries
+- Use valgrind for memcheck testing:
+    valgrind -v --show-reachable=yes --leak-check=full $BINARY
+- Implement rest of the code

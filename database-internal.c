@@ -12,6 +12,11 @@ do { fprintf(stderr, "[cdv/database-idb] " fmt , ## __VA_ARGS__); } while (0)
 do {} while(0)
 #endif
 
+long _idb_get_field_id(char *table, char *field);
+long _idb_table_id(char *name);
+int _idb_get_table_field_count(long id);
+int _idb_get_type_id_from_field(long idField);
+
 int idb_init(void)
 {
 	idb_tables_num = 0;
@@ -24,6 +29,23 @@ int idb_init(void)
 
 	_idb_filename = NULL;
 	_idb_datadir  = NULL;
+	_idb_querylog = NULL;
+
+	_idb_num_queries = 0;
+	_idb_num_queries_create = 0;
+	_idb_num_queries_drop = 0;
+	_idb_num_queries_insert = 0;
+	_idb_num_queries_update = 0;
+	_idb_num_queries_delete = 0;
+	_idb_num_queries_select = 0;
+
+	/* Initialize session timer */
+	_idb_session_start.tv_sec  = 0;
+	_idb_session_start.tv_nsec = 0;
+
+	/* Initialize query timer */
+	_idb_last_ts.tv_sec  = 0;
+	_idb_last_ts.tv_nsec = 0;
 
 	/* Initialize the NO RESULT type */
 	tdsNone.num_rows = -1;
@@ -34,6 +56,31 @@ int idb_init(void)
 			return 0;
 
 	return -ENOMEM;
+}
+
+struct timespec idb_get_time(int diff)
+{
+	struct timespec ts;
+	struct timespec res_ts;
+	struct timespec tsNull = { 0 };
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	if (diff == 1) {
+		if ((_idb_last_ts.tv_nsec == 0)
+			&& (_idb_last_ts.tv_sec == 0)) {
+			DPRINTF("%s: No time measured yet, cannot get difference\n",
+				__FUNCTION__);
+			res_ts = tsNull;
+		}
+		else
+			timespecsub(&ts, &_idb_last_ts, &res_ts);
+	}
+	else
+		res_ts = ts;
+
+	_idb_last_ts = ts;
+
+	return res_ts;
 }
 
 char *idb_get_filename(void)
@@ -69,12 +116,33 @@ char *_idb_get_input_value(char *data, int *otype)
 	return out;
 }
 
-int idb_process_query(char *query)
+int idb_query(char *query)
 {
 	int i, ret = -ENOTSUP;
+	struct timespec ts;
+	float myTime = -1;
 	tTokenizer t;
+	int log = 0;
 
-	DPRINTF("%s: Processing '%s'\n", __FUNCTION__, query);	
+	if (query == NULL)
+		return -EINVAL;
+
+	/* Log queries to file is file is set */
+	if ((_idb_querylog != NULL) && (strcmp(query, "CLOSE") != 0)) {
+		int fd;
+		char tmp[4096] = { 0 };
+
+		snprintf(tmp, sizeof(tmp), "Query \"%s", query);
+		fd = open(_idb_querylog, O_WRONLY | O_CREAT | O_APPEND, 0644);
+		write(fd, tmp, strlen(tmp));
+		close(fd);
+
+		log = 1;
+	}
+
+	DPRINTF("%s: Processing '%s'\n", __FUNCTION__, query);
+	idb_get_time( TIME_CURRENT );
+
 	if (strncmp(query, "INIT", 4) == 0) {
 		t = tokenize(query, " ");
 
@@ -91,18 +159,49 @@ int idb_process_query(char *query)
 
 		free_tokens(t);
 	}
+	if (strncmp(query, "REINIT", 6) == 0) {
+		t = tokenize(query, " ");
+
+		if (strcmp(t.tokens[0], "REINIT") == 0) {
+			if (_idb_datadir == NULL) {
+				unlink(t.tokens[1]);
+				ret = idb_load(t.tokens[1]);
+			}
+			else {
+				char path[4096] = { 0 };
+				snprintf(path, sizeof(path), "%s/%s", _idb_datadir, t.tokens[1]);
+
+				unlink(path);
+				ret = idb_load(path);
+			}
+		}
+	}
 	else
 	if (strncmp(query, "SET ", 4) == 0) {
 		t = tokenize(query, " ");
 
 		if (t.numTokens < 3)
-			return;
+			return -EINVAL;
 
 		if (strcmp(t.tokens[1], "DATADIR") == 0) {
 			_idb_datadir = strdup(t.tokens[2]);
 
 			DPRINTF("%s: Data directory set to '%s'\n", __FUNCTION__,
 				_idb_datadir);
+
+			ret = 0;
+		}
+		else
+		if ((strcmp(t.tokens[1], "QUERYLOG") == 0)
+			|| (strcmp(t.tokens[1], "FRESHQUERYLOG") == 0)) {
+			_idb_querylog = strdup(t.tokens[2]);
+
+			/* Start the fresh log if appropriate */
+			if (strcmp(t.tokens[1], "FRESHQUERYLOG") == 0)
+				unlink(_idb_querylog);
+
+			DPRINTF("%s: Setting up query logging to '%s'\n",
+				__FUNCTION__, _idb_querylog);
 
 			ret = 0;
 		}
@@ -143,14 +242,13 @@ int idb_process_query(char *query)
 			t2 = tokenize( strstr(query, "COMMENT") + 9, "'" );
 			cm = t2.tokens[0];
 		}
-		ret = idb_create_table(name, t.numTokens, fd, cm);
+		ret = idb_table_create(name, t.numTokens, fd, cm);
 		free_tokens(t2);
 		free_tokens(t);
 	}
 	else
 	if (strncmp(query, "INSERT INTO", 11) == 0) {
 		char *name = NULL;
-		char *data = NULL;
 
 		t = tokenize(query, " ");
 		if ((t.numTokens > 3)
@@ -191,7 +289,6 @@ int idb_process_query(char *query)
 						ret = -EINVAL;
 					}
 					else {
-						char tmp[1024] = { 0 };
 						tTableDataInput *tdi = NULL;
 
 						DPRINTF("%s: All columns of '%s' are about to be filled\n", __FUNCTION__, name);
@@ -232,23 +329,70 @@ int idb_process_query(char *query)
 	}
 	else
 	if (strncmp(query, "UPDATE", 6) == 0) {
-		// UPDATE users SET username = 'un', hash = 'hh' WHERE id = 1
 		t = tokenize(query, " ");
 		if ((t.numTokens < 3) || (strcmp(t.tokens[2], "SET") != 0))
 			ret = -EINVAL;
 		else {
 			int len = -1;
+			int num_fields;
 			tTokenizer t2;
+			int nextIsField;
+			int num_where_fields = 0;
+			tTableDataInput *tdi = NULL;
+			tTableDataInput *where_fields = NULL;
 			char *name = strdup(t.tokens[1]);
 
 			free_tokens(t);
 
 			if (strstr(query, "WHERE ") != NULL) {
 				char *tmp = strstr(query, "WHERE ") + 6;
+
+				where_fields = (tTableDataInput *)malloc( sizeof(tTableDataInput) );
+				memset(where_fields, 0, sizeof(tTableDataInput));
+				num_where_fields = 0;
+
 				t2 = tokenize(tmp, " ");
-				DPRINTF("t2 => %d\n", t2.numTokens);
-				for (i = 0; i < t2.numTokens; i++)
-					DPRINTF(" **** '%s'\n", t2.tokens[i]);
+				nextIsField = 1;
+				for (i = 0; i < t2.numTokens; i++) {
+					if ((nextIsField == 1) || (i == 0)) {
+						num_where_fields++;
+						where_fields = (tTableDataInput *)realloc( where_fields,
+							num_where_fields * sizeof(tTableDataInput) );
+
+						where_fields[num_where_fields - 1].name = strdup(t2.tokens[i]);
+
+						nextIsField = -1;
+					}
+
+					if ((strcmp(t2.tokens[i], "AND") == 0)
+						|| (strcmp(t2.tokens[i], "OR") == 0))
+						nextIsField = 1;
+					else {
+						if (nextIsField != -1) {
+							if (strcmp(t2.tokens[i], "=") != 0) {
+								char *tmp2 = NULL;
+								int type;
+
+								long idField = _idb_get_field_id(name,
+									where_fields[num_where_fields - 1].name);
+								tmp2 = _idb_get_input_value(trim(t2.tokens[i]), NULL);
+								type = _idb_get_type_id_from_field(idField);
+
+								if (type == IDB_TYPE_INT)
+									where_fields[num_where_fields - 1].iValue = atoi(tmp2);
+								else
+								if (type == IDB_TYPE_LONG)
+									where_fields[num_where_fields - 1].lValue = atol(tmp2);
+								else
+								if (type == IDB_TYPE_STR)
+									where_fields[num_where_fields - 1].sValue = strdup(tmp2);
+
+								free(tmp2); tmp2 = NULL;
+							}
+						}
+						nextIsField = 0;
+					}
+				}
 				free_tokens(t2);
 
 				len = strlen(query) - strlen(tmp) - 6;
@@ -263,24 +407,202 @@ int idb_process_query(char *query)
 			}
 
 			t = tokenize(query + 12 + strlen(name), ",");
-			for (i = 0; i < t.numTokens; i++)
-				DPRINTF(" * * * >>> '%s'\n", trim(t.tokens[i]));
 
-			DPRINTF("%s: Updating not implemented yet\n", __FUNCTION__);
+			/* Prepare row for update */
+			tdi = malloc( t.numTokens * sizeof(tTableDataInput) );
+			memset(tdi, 0, t.numTokens * sizeof(tTableDataInput) );
+
+			num_fields = t.numTokens;
+			for (i = 0; i < t.numTokens; i++) {
+				/* TODO: Fix when found in string */
+				t2 = tokenize(trim(t.tokens[i]), "=");
+				if (t2.numTokens == 2) {
+					int type;
+					char *tmp2 = NULL;
+
+					tmp2 = _idb_get_input_value(trim(t2.tokens[1]), &type);
+
+					tdi[i].name = strdup( _idb_get_input_value(trim(t2.tokens[0]), NULL) );
+					if (type == IDB_TYPE_INT)
+						tdi[i].iValue = atoi(tmp2);
+					else
+					if (type == IDB_TYPE_LONG)
+						tdi[i].lValue = atol(tmp2);
+					else
+					if (type == IDB_TYPE_STR)
+						tdi[i].sValue = strdup(tmp2);
+
+					free(tmp2); tmp2 = NULL;
+				}
+				else
+					DPRINTF("%s: Incorrect data field token count\n", __FUNCTION__);
+				free_tokens(t2);
+			}
+
+			ret = (idb_table_update(name, num_fields, tdi, num_where_fields, where_fields) >= 0) ? 0 : -ENOENT;
 		}
 		free_tokens(t);
 	}
 	else
-	if (strncmp(query, "DELETE", 6) == 0) {
-		DPRINTF("%s: Deletion not implemented yet\n", __FUNCTION__);
+	if (strncmp(query, "DELETE FROM", 11) == 0) {
+		tTokenizer t2;
+		int nextIsField;
+		int num_where_fields = 0;
+		tTableDataInput *where_fields = NULL;
+		char *name = NULL;
+
+		t = tokenize(query, " ");
+		name = strdup(t.tokens[2]);
+
+		if (strstr(query, "WHERE ") != NULL) {
+			char *tmp = strstr(query, "WHERE ") + 6;
+
+			where_fields = (tTableDataInput *)malloc( sizeof(tTableDataInput) );
+			memset(where_fields, 0, sizeof(tTableDataInput));
+			num_where_fields = 0;
+
+			t2 = tokenize(tmp, " ");
+			nextIsField = 1;
+			for (i = 0; i < t2.numTokens; i++) {
+				if ((nextIsField == 1) || (i == 0)) {
+					num_where_fields++;
+					where_fields = (tTableDataInput *)realloc( where_fields,
+						num_where_fields * sizeof(tTableDataInput) );
+
+					where_fields[num_where_fields - 1].name = strdup(t2.tokens[i]);
+
+					nextIsField = -1;
+				}
+
+				if ((strcmp(t2.tokens[i], "AND") == 0)
+					|| (strcmp(t2.tokens[i], "OR") == 0))
+					nextIsField = 1;
+				else {
+					if (nextIsField != -1) {
+						if (strcmp(t2.tokens[i], "=") != 0) {
+							char *tmp2 = NULL;
+							int type;
+
+							long idField = _idb_get_field_id(name,
+								where_fields[num_where_fields - 1].name);
+							tmp2 = _idb_get_input_value(trim(t2.tokens[i]), NULL);
+							type = _idb_get_type_id_from_field(idField);
+
+							if (type == IDB_TYPE_INT)
+								where_fields[num_where_fields - 1].iValue = atoi(tmp2);
+							else
+							if (type == IDB_TYPE_LONG)
+								where_fields[num_where_fields - 1].lValue = atol(tmp2);
+							else
+							if (type == IDB_TYPE_STR)
+								where_fields[num_where_fields - 1].sValue = strdup(tmp2);
+
+							free(tmp2); tmp2 = NULL;
+						}
+					}
+					nextIsField = 0;
+				}
+			}
+			free_tokens(t2);
+		}
+
+		ret = (idb_table_delete(name, num_where_fields, where_fields) >= 0) ? 0 : -ENOENT;
+		free_tokens(t);
 	}
 	else
 	if (strncmp(query, "DROP TABLE", 10) == 0) {
-		DPRINTF("%s: Dropping tables not implemented yet\n", __FUNCTION__);
+		char *name = NULL;
+
+		t = tokenize(query, " ");
+		name = strdup(t.tokens[2]);
+
+		ret = idb_table_drop(name);
+		free_tokens(t);
 	}
 	else
 	if (strncmp(query, "SELECT", 6) == 0) {
-		DPRINTF("%s: Selection not implemented yet\n", __FUNCTION__);
+		tTokenizer t2;
+		int nextIsField;
+		int num_fields = 0;
+		int num_where_fields = 0;
+		tTableDataInput *where_fields = NULL;
+		char *name = NULL;
+		char *fields = NULL;
+		char **aFields = NULL;
+
+		idb_free_last_select_data();
+
+		t = tokenize(query, " ");
+		fields = strdup(t.tokens[1]);
+		name = strdup(t.tokens[3]);
+
+		if (strstr(query, "WHERE ") != NULL) {
+			char *tmp = strstr(query, "WHERE ") + 6;
+
+			where_fields = (tTableDataInput *)malloc( sizeof(tTableDataInput) );
+			memset(where_fields, 0, sizeof(tTableDataInput));
+			num_where_fields = 0;
+
+			t2 = tokenize(tmp, " ");
+			nextIsField = 1;
+			for (i = 0; i < t2.numTokens; i++) {
+				if ((nextIsField == 1) || (i == 0)) {
+					num_where_fields++;
+					where_fields = (tTableDataInput *)realloc( where_fields,
+						num_where_fields * sizeof(tTableDataInput) );
+
+					where_fields[num_where_fields - 1].name = strdup(t2.tokens[i]);
+
+					nextIsField = -1;
+				}
+
+				if ((strcmp(t2.tokens[i], "AND") == 0)
+					|| (strcmp(t2.tokens[i], "OR") == 0))
+					nextIsField = 1;
+				else {
+					if (nextIsField != -1) {
+						if (strcmp(t2.tokens[i], "=") != 0) {
+							char *tmp2 = NULL;
+							int type;
+
+							long idField = _idb_get_field_id(name,
+								where_fields[num_where_fields - 1].name);
+							tmp2 = _idb_get_input_value(trim(t2.tokens[i]), NULL);
+							type = _idb_get_type_id_from_field(idField);
+
+							if (type == IDB_TYPE_INT)
+								where_fields[num_where_fields - 1].iValue = atoi(tmp2);
+							else
+							if (type == IDB_TYPE_LONG)
+								where_fields[num_where_fields - 1].lValue = atol(tmp2);
+							else
+							if (type == IDB_TYPE_STR)
+								where_fields[num_where_fields - 1].sValue = strdup(tmp2);
+
+							free(tmp2); tmp2 = NULL;
+						}
+					}
+					nextIsField = 0;
+				}
+			}
+			free_tokens(t2);
+		}
+
+		t2 = tokenize(fields, ",");
+		num_fields = t2.numTokens;
+		aFields = (char **)malloc( num_fields * sizeof(char *) );
+		for (i = 0; i < t2.numTokens; i++)
+			aFields[i] = strdup(t2.tokens[i]);
+		free_tokens(t2);
+
+		_last_tds = idb_table_select(name, num_fields, aFields, num_where_fields, where_fields);
+		ret = (_last_tds.num_rows == 0) ? -ENOENT : 0;
+		free_tokens(t);
+
+		for (i = 0; i < t2.numTokens; i++)
+			free(aFields[i]);
+		free(aFields);
+		free_tokens(t2);
 	}
 	else
 	if (strcmp(query, "COMMIT") == 0)
@@ -315,13 +637,42 @@ int idb_process_query(char *query)
 	else
 		ret = -ENOTSUP;
 
-	DPRINTF("%s: Returning error code %d (%s)\n", __FUNCTION__, ret,
-		strerror(-ret));
+	ts = idb_get_time( TIME_DIFF );
+	myTime = ((ts.tv_sec * 1000000000) + ts.tv_nsec) / (float)1000;
+
+	/* Log the query result */
+	if (log) {
+		int fd;
+		char tmp[1024] = { 0 };
+
+		snprintf(tmp, sizeof(tmp), "\" returned in %.3f ms, code %d\n",
+			myTime, ret);
+		fd = open(_idb_querylog, O_WRONLY | O_CREAT | O_APPEND, 0644);
+		write(fd, tmp, strlen(tmp));
+		close(fd);
+	}
+
+	DPRINTF("%s: Returning error code %d (%s), time is %.3f ms\n", __FUNCTION__, ret,
+		strerror(-ret), myTime);
 	return ret;
+}
+
+tTableDataSelect idb_get_last_select_data(void)
+{
+	return _last_tds;
+}
+
+void idb_free_last_select_data(void)
+{
+	idb_results_free( &_last_tds );
 }
 
 void idb_free(void)
 {
+	struct timespec ts;
+	struct timespec tss;
+	float myTime = -1;
+
 	free(idb_tables);
 	free(idb_fields);
 	free(idb_tabdata);
@@ -331,6 +682,41 @@ void idb_free(void)
 	idb_tables_num = 0;
 	idb_fields_num = 0;
 	idb_tabdata_num = 0;
+
+	tss = idb_get_time( TIME_CURRENT );
+	timespecsub(&tss, &_idb_session_start, &ts);
+        myTime = ((ts.tv_sec * 1000000000) + ts.tv_nsec) / (float)1000;
+
+	/* Log the session time */
+	if (_idb_querylog != NULL) {
+		int fd;
+		char tmp[4096] = { 0 };
+
+		fd = open(_idb_querylog, O_WRONLY | O_CREAT | O_APPEND, 0644);
+		write(fd, tmp, strlen(tmp));
+
+		snprintf(tmp, sizeof(tmp), "Queries = { select: %d, insert: %d, update: %d, delete: %d, "
+			"create: %d, drop: %d, total: %d }\n", _idb_num_queries_select, _idb_num_queries_insert,
+			_idb_num_queries_update, _idb_num_queries_delete, _idb_num_queries_create,
+			_idb_num_queries_drop, _idb_num_queries);
+		write(fd, tmp, strlen(tmp));
+
+		snprintf(tmp, sizeof(tmp), "Session finished in %.3f ms (%.3f s), %d queries processed\n",
+			myTime, myTime / 1000., _idb_num_queries);
+
+		write(fd, tmp, strlen(tmp));
+		close(fd);
+	}
+
+	DPRINTF("%s: Queries = { select: %d, insert: %d, update: %d, delete: %d, create: %d, drop: %d, total: %d }\n",
+		__FUNCTION__,
+		_idb_num_queries_select, _idb_num_queries_insert, _idb_num_queries_update, _idb_num_queries_delete,
+		_idb_num_queries_create, _idb_num_queries_drop, _idb_num_queries);
+
+	DPRINTF("%s: Session finished in %.3f ms (%.3f s), %d queries processed\n", __FUNCTION__,
+		myTime, myTime / 1000., _idb_num_queries);
+
+	_idb_num_queries = 0;
 }
 
 long _idb_get_free_id(int type)
@@ -506,7 +892,7 @@ long _idb_table_row_field_data_add(long idField, long idRow, tTableDataInput td)
 
 	id = _idb_get_free_id( IDB_TABDATA );
 	if (id < 0) {
-		DPRINTF("%s: Invalid data table free id %ld\n", id);
+		DPRINTF("%s: Invalid data table free id %ld\n", __FUNCTION__, id);
 		return -1;
 	}
 
@@ -667,6 +1053,82 @@ int _idb_table_row_field_delete(long idField, long idRow)
 	return 0;
 }
 
+int _idb_table_field_delete(long idField)
+{
+	long i, id = -1;
+	long lid = -1;
+
+	lid = idb_fields_num - 1;
+	if (lid < 0)
+		return -EINVAL;
+
+	for (i = 0; i < idb_fields_num; i++) {
+		if (idb_fields[i].id == idField) {
+			id = i;
+			break;
+		}
+	}
+
+	if (id == -1)
+		return -EINVAL;
+
+	free(idb_fields[id].name);
+	idb_fields[id].name = NULL;
+
+	idb_fields[id].id = idb_fields[lid].id;
+	idb_fields[id].type = idb_fields[lid].type;
+	idb_fields[id].name = idb_fields[lid].name;
+	idb_fields[id].idTable = idb_fields[lid].idTable;
+	idb_fields_num--;
+
+	idb_fields = realloc( idb_fields, idb_fields_num * sizeof(tTableFieldDef) );
+	if (idb_fields == NULL)
+		return -ENOMEM;
+
+	return 0;
+}
+
+int _idb_table_delete(long idTable)
+{
+	long i, id = -1;
+	long lid = -1;
+	int comment = 0;
+
+	lid = idb_tables_num - 1;
+	if (lid < 0)
+		return -EINVAL;
+
+	for (i = 0; i < idb_tables_num; i++) {
+		if (idb_tables[i].id == idTable) {
+			id = i;
+			break;
+		}
+	}
+
+	if (id == -1)
+		return -EINVAL;
+
+	if (idb_tables[lid].comment != NULL) {
+		free(idb_tables[id].comment);
+		idb_tables[id].comment = NULL;
+		comment = 1;
+	}
+	free(idb_tables[id].name);
+	idb_tables[id].name = NULL;
+
+	idb_tables[id].id = idb_tables[lid].id;
+	idb_tables[id].name = idb_tables[lid].name;
+	if (comment)
+		idb_tables[id].comment = idb_tables[lid].comment;
+	idb_tables_num--;
+
+	idb_tables = realloc( idb_tables, idb_tables_num * sizeof(tTableDef) );
+	if (idb_tables == NULL)
+		return -ENOMEM;
+
+	return 0;
+}
+
 long _idb_table_id(char *name)
 {
 	long i;
@@ -713,7 +1175,7 @@ long _idb_get_field_id(char *table, char *field)
 	return -1;
 }
 
-int idb_create_table(char *name, int num_fields, tTableFieldDef *fields, char *comment)
+int idb_table_create(char *name, int num_fields, tTableFieldDef *fields, char *comment)
 {
 	long i;
 	long idTable = -1;
@@ -736,6 +1198,9 @@ int idb_create_table(char *name, int num_fields, tTableFieldDef *fields, char *c
 	for (i = 0; i < num_fields; i++) {
 		_idb_table_field_add(idTable, fields[i].name, fields[i].type);
 	}
+
+	_idb_num_queries++;
+	_idb_num_queries_create++;
 
 	DPRINTF("%s: Table '%s' with %d fields added successfully\n", __FUNCTION__, name, num_fields);
 	return 0;
@@ -760,10 +1225,52 @@ int idb_table_insert(char *table_name, int num_data, tTableDataInput *td)
 		}
 	}
 
-	return (num == num_data) ? 0 : -EIO;
+	_idb_num_queries++;
+	_idb_num_queries_insert++;
+
+	if (num != num_data) {
+		DPRINTF("%s: Number of fields added is %d, number of fields that *should* have been added is %d\n",
+			__FUNCTION__, num, num_data);
+		return -EIO;
+	}
+
+	return 0;
 }
 
-int idb_table_update(char *table_name, long idRow, int num_data, tTableDataInput *td)
+int _idb_row_fields_match(char *table, long idRow, int num_fields, tTableDataInput *fields)
+{
+	int i;
+	int ret = 0;
+	long j;
+	long idField;
+
+	for (j = 0; j < idb_tabdata_num; j++) {
+		if (idb_tabdata[j].idRow == idRow) {
+			for (i = 0; i < num_fields; i++) {
+				idField = _idb_get_field_id(table, fields[i].name);
+				if ((idField >= 0) && (idb_tabdata[j].idField == idField)) {
+					switch (_idb_get_type_id_from_field(idField)) {
+						case IDB_TYPE_INT:	ret += (fields[i].iValue == idb_tabdata[j].iValue);
+									break;
+						case IDB_TYPE_LONG:	ret += (fields[i].lValue == idb_tabdata[j].lValue);
+									break;
+						case IDB_TYPE_STR:	ret += (strcmp(fields[i].sValue, idb_tabdata[j].sValue) == 0);
+									break;
+						case IDB_TYPE_FILE:	ret += 1;
+									DPRINTF("%s: File conditions are not supported!\n", __FUNCTION__);
+									break;
+						default:		DPRINTF("%s: Unknown data type\n", __FUNCTION__);
+									break;
+					}
+				}
+			}
+		}
+	}
+
+	return (ret == num_fields);
+}
+
+int idb_table_update_row(char *table_name, long idRow, int num_data, tTableDataInput *td)
 {
 	int i;
 	long idField = -1;
@@ -771,26 +1278,171 @@ int idb_table_update(char *table_name, long idRow, int num_data, tTableDataInput
 	for (i = 0; i < num_data; i++) {
 		idField = _idb_get_field_id(table_name, td[i].name);
 		if (idField >= 0) {
-			_idb_table_row_field_delete(idField, idRow);
+			 _idb_table_row_field_delete(idField, idRow);
 			_idb_table_row_field_add(idField, idRow, td[i]);
 		}
 	}
+
+	_idb_num_queries++;
+	_idb_num_queries_update++;
+	return 0;
 }
 
-int idb_table_delete(char *table_name, long idRow)
+int idb_table_update(char *table_name, int num_fields, tTableDataInput *td, int num_where_fields, tTableDataInput *where_fields)
 {
+	long i, j;
+	long row_cnt;
+	long idTable;
+	long idField;
+
+	idTable = _idb_table_id(table_name);
+	if (idTable < 0)
+		return -ENOENT;
+
+	DPRINTF("%s: Number of fields is %d\n", __FUNCTION__, num_fields);
+	row_cnt = 0;
+	for (i = 0; i < num_fields; i++) {
+		idField = _idb_get_field_id(table_name, td[i].name);
+		if (idField < 0) {
+			DPRINTF("%s: Cannot find field '%s'\n", __FUNCTION__, td[i].name);
+			return -EINVAL;
+		}
+
+		for (j = 0; j < idb_tabdata_num; j++) {
+			if (idb_tabdata[j].idField == idField) {
+				if (!_idb_row_fields_match(table_name, idb_tabdata[j].idRow, num_where_fields, where_fields))
+					continue;
+				FILE *fp = NULL;
+				row_cnt++;
+
+				DPRINTF("%s: Found matching field with internal ID %ld\n", __FUNCTION__, idb_tabdata[j].id);
+				switch (_idb_get_type_id_from_field(idField)) {
+					case IDB_TYPE_INT:
+								idb_tabdata[j].iValue = td[i].iValue;
+								break;
+					case IDB_TYPE_LONG:
+								idb_tabdata[j].lValue = td[i].lValue;
+								break;
+					case IDB_TYPE_STR:
+								free(idb_tabdata[j].sValue);
+								idb_tabdata[j].sValue = NULL;
+								idb_tabdata[j].sValue = strdup( td[i].sValue );
+								break;
+					case IDB_TYPE_FILE:
+								fp = fopen(idb_tabdata[j].sValue, "w");
+								fwrite(td[i].cData, td[i].cData_len, 1, fp);
+								fclose(fp);
+								break;
+					default:
+								DPRINTF("%s: Unsupported data type\n", __FUNCTION__);
+								break;
+				}
+			}
+		}
+	}
+
+	_idb_num_queries++;
+	_idb_num_queries_update++;
+	return row_cnt;
+}
+
+int idb_table_delete_row(char *table_name, long idRow)
+{
+	int affected;
 	long i, tId = -1;
-	long idField = -1;
+	long row_cnt;
 
 	tId = _idb_table_id(table_name);
 	if (tId == -1)
 		return -EINVAL;
 
+	affected = 0;
+iter:
+	row_cnt = 0;
 	for (i = 0; i < idb_tabdata_num; i++) {
 		if (( _idb_table_get_id_from_field_id(idb_tabdata[i].idField) == tId)
 			&& (idb_tabdata[i].idRow == idRow))
-			_idb_table_row_field_delete(idb_tabdata[i].idField, idRow);
+			if (_idb_table_row_field_delete(idb_tabdata[i].idField, idRow) == 0) {
+				affected++;
+				row_cnt++;
+			}
 	}
+
+	if (row_cnt > 0)
+		goto iter;
+
+	_idb_num_queries++;
+	_idb_num_queries_delete++;
+	DPRINTF("%s: Number of affected items is %d\n", __FUNCTION__, affected);
+	return affected;
+}
+
+int idb_table_delete(char *table_name, int num_where_fields, tTableDataInput *where_fields)
+{
+	int row_cnt;
+	int affected;
+	long i;
+	long idTable;
+	long idRow;
+
+	idTable = _idb_table_id(table_name);
+	if (idTable < 0)
+		return -ENOENT;
+
+	affected = 0;
+iter:
+	row_cnt = 0;
+	for (i = 0; i < idb_tabdata_num; i++) {
+		if (_idb_table_get_id_from_field_id(idb_tabdata[i].idField) == idTable) {
+			if (!_idb_row_fields_match(table_name, idb_tabdata[i].idRow, num_where_fields, where_fields))
+				continue;
+			idRow = idb_tabdata[i].idRow;
+
+			row_cnt++;
+			affected++;
+
+			DPRINTF("%s: Found matching field with idRow %ld (internal ID %ld)\n", __FUNCTION__,
+					idRow, idb_tabdata[i].id);
+			idb_table_delete_row(table_name, idRow);
+		}
+	}
+
+	if (row_cnt > 0)
+		goto iter;
+
+	_idb_num_queries++;
+	_idb_num_queries_delete++;
+	DPRINTF("%s: Number of affected items is %d\n", __FUNCTION__, affected);
+	return row_cnt;
+}
+
+int idb_table_drop(char *table_name)
+{
+	int ret;
+	long i;
+	long idTable;
+
+	idTable = _idb_table_id(table_name);
+	if (idTable < 0)
+		return -ENOENT;
+
+	ret = idb_table_delete(table_name, 0, NULL);
+	if (ret != 0)
+		return -ENOENT;
+
+	for (i = 0; i < idb_fields_num; i++) {
+		if (idb_fields[i].idTable == idTable)
+			_idb_table_field_delete(idb_fields[i].id);
+	}
+
+	for (i = 0; i < idb_tables_num; i++) {
+		if (idb_tables[i].id == idTable)
+			_idb_table_delete(idb_tables[i].id);
+	}
+
+	_idb_num_queries++;
+	_idb_num_queries_drop++;
+	return 0;
 }
 
 int _idb_tables_dump(void)
@@ -798,12 +1450,14 @@ int _idb_tables_dump(void)
 	long i;
 
 	for (i = 0; i < idb_tables_num; i++) {
-		DPRINTF("Table #%d:\n", i + 1);
+		DPRINTF("Table #%ld:\n", i + 1);
 		DPRINTF("\tInternal ID: %ld\n", idb_tables[i].id);
 		DPRINTF("\tName: %s\n", idb_tables[i].name);
 		DPRINTF("\tNumber of fields: %d\n", _idb_get_table_field_count(idb_tables[i].id));
 		DPRINTF("\tComment: %s\n", idb_tables[i].comment ? idb_tables[i].comment : "<null>");
 	}
+
+	return 0;
 }
 
 int _idb_fields_dump(void)
@@ -811,7 +1465,7 @@ int _idb_fields_dump(void)
 	long i;
 
 	for (i = 0; i < idb_fields_num; i++) {
-		DPRINTF("Table field #%d:\n", i + 1);
+		DPRINTF("Table field #%ld:\n", i + 1);
 		DPRINTF("\tInternal ID: %ld\n", idb_fields[i].id);
 		DPRINTF("\tFor table: %s (ID = %ld)\n", _idb_get_table_name(idb_fields[i].idTable),
 			idb_fields[i].idTable);
@@ -819,6 +1473,8 @@ int _idb_fields_dump(void)
 		DPRINTF("\tType: %s (code %d)\n", _idb_get_type(idb_fields[i].type),
 			idb_fields[i].type);
 	}
+
+	return 0;
 }
 
 int _idb_tabledata_dump(void)
@@ -829,7 +1485,7 @@ int _idb_tabledata_dump(void)
 	for (i = 0; i < idb_tabdata_num; i++) {
 		fieldType = _idb_get_type_id_from_field(idb_tabdata[i].idField);
 
-		DPRINTF("Table data #%d:\n", i + 1);
+		DPRINTF("Table data #%ld:\n", i + 1);
 		DPRINTF("\tInternal ID: %ld\n", idb_tabdata[i].id);
 		DPRINTF("\tInternal field ID: %ld (%s)\n", idb_tabdata[i].idField,
 			_idb_get_type(fieldType));
@@ -848,6 +1504,8 @@ int _idb_tabledata_dump(void)
 			DPRINTF("\tFile value: %s (%ld bytes)\n", idb_tabdata[i].sValue,
 				get_file_size(idb_tabdata[i].sValue));
 	}
+
+	return 0;
 }
 
 void idb_dump(void)
@@ -856,9 +1514,9 @@ void idb_dump(void)
 	DPRINTF("Dumping data for internal database\n");
 	DPRINTF("==================================\n");
 	DPRINTF("Metrics:\n");
-	DPRINTF("\tTables: %ld\n", idb_tables_num);
-	DPRINTF("\tFields: %ld\n", idb_fields_num);
-	DPRINTF("\tData: %ld\n", idb_tabdata_num);
+	DPRINTF("\tTables: %d\n", idb_tables_num);
+	DPRINTF("\tFields: %d\n", idb_fields_num);
+	DPRINTF("\tData: %d\n", idb_tabdata_num);
 
 	_idb_tables_dump();
 	_idb_fields_dump();
@@ -869,7 +1527,6 @@ int _idb_fill_cdata(tTableDataField *tdi, char *filename)
 {
 	int fd;
 	long len = 0;
-	FILE *fp = NULL;
 	char buf[1024] = { 0 };
 	long total = 0;
 
@@ -908,42 +1565,8 @@ int _idb_fill_cdata(tTableDataField *tdi, char *filename)
 	return 0;
 }
 
-int _idb_row_fields_match(char *table, long idRow, int num_fields, tTableDataInput *fields)
-{
-	int i;
-	int ret = 0;
-	long j;
-	long idField;
-
-	for (j = 0; j < idb_tabdata_num; j++) {
-		if (idb_tabdata[j].idRow == idRow) {
-			for (i = 0; i < num_fields; i++) {
-				idField = _idb_get_field_id(table, fields[i].name);
-				if ((idField >= 0) && (idb_tabdata[j].idField == idField)) {
-					switch (_idb_get_type_id_from_field(idField)) {
-						case IDB_TYPE_INT:	ret += (fields[i].iValue == idb_tabdata[j].iValue);
-									break;
-						case IDB_TYPE_LONG:	ret += (fields[i].lValue == idb_tabdata[j].lValue);
-									break;
-						case IDB_TYPE_STR:	ret += (strcmp(fields[i].sValue, idb_tabdata[j].sValue) == 0);
-									break;
-						case IDB_TYPE_FILE:	ret += 1;
-									DPRINTF("%s: File conditions are not supported!\n", __FUNCTION__);
-									break;
-						default:		DPRINTF("%s: Unknown data type\n", __FUNCTION__);
-									break;
-					}
-				}
-			}
-		}
-	}
-
-	return (ret == num_fields);
-}
-
 tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, int num_where_fields, tTableDataInput *where_fields)
 {
-	int type;
 	long i, j, l;
 	long row_cnt;
 	long idTable;
@@ -956,6 +1579,35 @@ tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, in
 	idTable = _idb_table_id(table);
 	if (idTable < 0)
 		return tdsNone;
+
+	/* Support asterisk only as a single field component */
+	if ((num_fields == 1) && (strcmp(fields[0], "*") == 0)) {
+		long new;
+		new = l = 0;
+		for (j = 0; j < idb_fields_num; j++) {
+			if (idb_fields[j].idTable == idTable)
+				l++;
+		}
+
+		new = (num_fields + (int)(l - 1));
+		DPRINTF("%s: Asterisk found, array will be extended by %ld elements, new size is %ld\n", __FUNCTION__,
+			l - 1, new);
+
+		fields = realloc( fields, new * sizeof(char *) );
+
+		l = 0;
+		for (j = 0; j < idb_fields_num; j++) {
+			if (idb_fields[j].idTable == idTable) {
+				new = l;
+				if ((idb_fields[j].name != NULL) && (strlen(idb_fields[j].name) > 0)) {
+					fields[new] = strdup( idb_fields[j].name );
+					l++;
+				}
+			}
+		}
+
+		num_fields += l - 1;
+	}
 
 	rows_present = (long *)malloc( sizeof(long) );
 
@@ -1043,6 +1695,8 @@ tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, in
 		}
 	}
 
+	_idb_num_queries++;
+	_idb_num_queries_select++;
 	tds.num_rows = row_cnt;
 	return tds;
 }
@@ -1060,7 +1714,7 @@ void idb_results_dump(tTableDataSelect tds)
 	DPRINTF("Number of rows: %ld\n", tds.num_rows);
 
 	for (i = 0; i < tds.num_rows; i++) {
-		DPRINTF("Row #%d:\n", i + 1);
+		DPRINTF("Row #%ld:\n", i + 1);
 		DPRINTF("\tNumber of fields: %ld\n", tds.rows[i].num_fields);
 
 		for (j = 0; j < tds.rows[i].num_fields; j++) {
@@ -1097,6 +1751,32 @@ void idb_results_dump(tTableDataSelect tds)
 	DPRINTF("======================\n");
 	DPRINTF("End of result set dump\n");
 	DPRINTF("======================\n");
+}
+
+void idb_results_free(tTableDataSelect *tds)
+{
+	long i = 0, j = 0;
+
+	if (tds->num_rows <= 0)
+		return;
+
+	for (i = 0; i < tds->num_rows; i++) {
+		for (j = 0; j < tds->rows[i].num_fields; j++) {
+			tds->rows[i].tdi[j].iValue = 0;
+			tds->rows[i].tdi[j].lValue = 0;
+			free(tds->rows[i].tdi[j].sValue);
+			tds->rows[i].tdi[j].sValue = NULL;
+			free(tds->rows[i].tdi[j].cData);
+			tds->rows[i].tdi[j].cData = NULL;
+			tds->rows[i].tdi[j].cData_len = 0;
+		}
+
+		tds->rows[i].num_fields = -1;
+		free(tds->rows[i].tdi);
+	}
+	tds->num_rows = 0;
+
+	free(tds->rows);
 }
 
 long _idb_save_header(int fd)
@@ -1191,7 +1871,7 @@ long _idb_save_header(int fd)
 
 	lseek(fd, 5, SEEK_SET);
 
-	UINT32STR(tmp, data_len - 5 - 3);
+	UINT32STR(tmp, (data_len - 5 - 3) );
 	write(fd, tmp, 3);
 
 	lseek(fd, data_len, SEEK_SET);
@@ -1288,7 +1968,7 @@ long _idb_save_data(int fd, long orig_data_len)
 
 	lseek(fd, orig_data_len, SEEK_SET);
 
-	UINT32STR(tmp, data_len - 3);
+	UINT32STR(tmp, (data_len - 3) );
 	write(fd, tmp, 3);
 
 	lseek(fd, orig_data_len + data_len, SEEK_SET);
@@ -1301,7 +1981,6 @@ long _idb_read_header(int fd, char *filename)
 	long i, j, idTab, idField;
 	int inumf = 0, nf = 0;
 	int ilen = 0, itype = 0, tabcnt = 0;
-	int ret = -EINVAL;
 	long data_len = 0, size = 0;
 	unsigned char *tmp = NULL;
 	unsigned char *tmpc = NULL;
@@ -1369,8 +2048,9 @@ long _idb_read_header(int fd, char *filename)
 		}
 
 		idb_tables[i].id = idTab;
-		idb_tables[i].name = strdup(tmpn);
-		idb_tables[i].comment = ((tmpc != NULL) && (strlen(tmpc) != 0)) ? strdup(tmpc) : NULL;
+		idb_tables[i].name = strdup( (char *)tmpn);
+		idb_tables[i].comment = ((tmpc != NULL) && (strlen((char *)tmpc) != 0)) ?
+			strdup((char *)tmpc) : NULL;
 
 		free(tmp); tmp = NULL;
 		free(tmpc); tmpc = NULL;
@@ -1431,7 +2111,7 @@ long _idb_read_header(int fd, char *filename)
 				return -EIO;
 			tmp[ilen] = 0;
 			DPRINTF("%s: Field name is '%s'\n", __FUNCTION__, tmp);
-			idb_fields[idb_fields_num + j].name = strdup(tmp);
+			idb_fields[idb_fields_num + j].name = strdup((char *)tmp);
 			free(tmp); tmp = NULL;
 		}
 
@@ -1447,12 +2127,10 @@ long _idb_read_header(int fd, char *filename)
 
 long _idb_read_data(int fd)
 {
-	int ret = -EINVAL;
 	long i, fieldcnt, type, iValue;
 	long data_len = 0, size = 0;
 	long idField, idRow, idTab, lValue;
 	unsigned char *tmp = NULL;
-	unsigned char *sValue = NULL;
 
 	/* Get header size */
 	tmp = data_fetch(fd, 3, &data_len, 1);
@@ -1487,7 +2165,7 @@ long _idb_read_data(int fd)
 		if (tmp == NULL)
 			return -EIO;
 		type = (int)GETBYTE(tmp);
-		DPRINTF("%s: Type is %d (%s)\n", __FUNCTION__, type,
+		DPRINTF("%s: Type is %ld (%s)\n", __FUNCTION__, type,
 			_idb_get_type(type) );
 		free(tmp); tmp = NULL;
 
@@ -1525,7 +2203,7 @@ long _idb_read_data(int fd)
 				return -EIO;
 			iValue = (int)GETWORD(tmp);
 			idb_tabdata[idb_tabdata_num + i].iValue = iValue;
-			DPRINTF("%s: Got iValue of %d\n", __FUNCTION__, iValue);
+			DPRINTF("%s: Got iValue of %ld\n", __FUNCTION__, iValue);
 			free(tmp); tmp = NULL;
 		}
 		else
@@ -1535,7 +2213,7 @@ long _idb_read_data(int fd)
 				return -EIO;
 			lValue = (long)GETUINT32(tmp);
 			idb_tabdata[idb_tabdata_num + i].lValue = lValue;
-			DPRINTF("%s: Got lValue of %d\n", __FUNCTION__, lValue);
+			DPRINTF("%s: Got lValue of %ld\n", __FUNCTION__, lValue);
 			free(tmp); tmp = NULL;
 		}
 		else
@@ -1553,14 +2231,14 @@ long _idb_read_data(int fd)
 			if (tmp == NULL)
 				return -EIO;
 			size = (long)GETUINT32(tmp);
-			DPRINTF("%s: Got size of %d\n", __FUNCTION__, size);
+			DPRINTF("%s: Got size of %ld\n", __FUNCTION__, size);
 			free(tmp); tmp = NULL;
 
 			tmp = data_fetch(fd, size, &data_len, 0);
 			if (tmp == NULL)
 				return -EIO;
 			DPRINTF("%s: Got string data of '%s'\n", __FUNCTION__, tmp);
-			idb_tabdata[idb_tabdata_num + i].sValue = strdup(tmp);
+			idb_tabdata[idb_tabdata_num + i].sValue = strdup((char *)tmp);
 			free(tmp); tmp = NULL;
 		}
 	}
@@ -1583,15 +2261,19 @@ int idb_load(char *filename)
 
 	DPRINTF("%s: Loading file '%s'\n", __FUNCTION__, filename);
 
+	_idb_session_start = idb_get_time( TIME_CURRENT );
+
 	fd = open(filename, O_RDONLY);
 	if (fd < 0)
 		return -errno;
+
+	_idb_session_start = idb_get_time( TIME_CURRENT );
 
 	/* Read the CDVDB header */
 	tmp = data_fetch(fd, 5, &data_len, 0);
 	if (tmp == NULL)
 		goto cleanup;
-	if (strcmp(tmp, "CDVDB") != 0)
+	if (strcmp((const char *)tmp, "CDVDB") != 0)
 		goto cleanup;
 
 	if ((len = _idb_read_header(fd, filename)) < 0)
@@ -1650,15 +2332,22 @@ int idb_save(char *filename)
 int idb_init(void) {};
 void idb_free(void) {};
 long idb_table_id(char *name) {};
-int idb_create_table(char *name, int num_fields, void *fields, char *comment) {};
+int idb_table_create(char *name, int num_fields, void *fields, char *comment) {};
 int idb_table_insert(char *name, int num_data, tTableDataInput *td) {};
-int idb_table_update(char *table_name, long idRow, int num_data, tTableDataInput *td) {};
-int idb_table_delete(char *table_name, long idRow) {};
+int idb_table_update_row(char *table_name, long idRow, int num_data, tTableDataInput *td) {};
+int idb_table_update(char *table_name, int num_data, tTableDataInput *td, int num_where_fields, tTableDataInput *where_fields);
+int idb_table_delete_row(char *table_name, long idRow) {};
+int idb_table_delete(char *table_name, int num_where_fields, tTableDataInput *where_fields) {};
+int idb_table_drop(char *table_name) {};
+void idb_results_dump(tTableDataSelect tds) {};
+void idb_results_free(tTableDataSelect tds) {};
 void idb_dump(void) {};
 int idb_type_id(char *type) {};
 int idb_load(char *filename) {};
 int idb_save(char *filename) {};
 char *idb_get_filename(void) {};
-int idb_process_query(char *query) {};
+int idb_query(char *query) {};
+tTableDataSelect idb_get_last_select_data(void) {};
+void idb_free_last_select_data(void) {};
 #endif
 

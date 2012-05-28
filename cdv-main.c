@@ -13,7 +13,6 @@ do {} while(0)
 
 int test_xml_query_data(void)
 {
-	int err;
 	char *data = NULL;
 
 	if (xml_init() < 0)
@@ -35,7 +34,6 @@ int test_idb(void)
 {
 	int err;
 	tTableFieldDef *fd = NULL;
-	tTableData td = { 0 };
 	tTableDataSelect tds = tdsNone;
 	tTableDataInput *tdi = NULL;
 	int i, num_fds = 5;
@@ -52,7 +50,7 @@ int test_idb(void)
 		fd[i].type = (i % 2) ? IDB_TYPE_INT : IDB_TYPE_LONG;
 	}
 
-	if ((err = idb_create_table("table", num_fds, fd, NULL)) < 0) {
+	if ((err = idb_table_create("table", num_fds, fd, NULL)) < 0) {
 		printf("Error %d on idb_create_table\n", err);
 		return -1;
 	}
@@ -82,7 +80,7 @@ int test_idb(void)
 		fd[i].type = (i % 2) ? IDB_TYPE_FILE : IDB_TYPE_STR;
 	}
 
-	if ((err = idb_create_table("table-2", num_fds, fd, "comment")) < 0) {
+	if ((err = idb_table_create("table-2", num_fds, fd, "comment")) < 0) {
 		printf("Error %d on idb_create_table\n", err);
 		return -1;
 	}
@@ -96,10 +94,10 @@ int test_idb(void)
 	}
 
 	DPRINTF("%s: Now updating row 2 of table\n", __FUNCTION__);
-	idb_table_update("table", 2, num_fds, tdi);
+	idb_table_update_row("table", 2, num_fds, tdi);
 
 	DPRINTF("%s: Now deleting row 1 of table\n", __FUNCTION__);
-	idb_table_delete("table", 1);
+	idb_table_delete_row("table", 1);
 
 	/* Test with second table */
 	for (i = 0; i < num_fds; i++) {
@@ -152,29 +150,50 @@ int test_idb(void)
 	return 0;
 }
 
-int main(void)
+int test_idb_queries(void)
 {
-	int i;
 	char cmd[1024] = { 0 };
 
 	if (ensure_directory_existence(DATADIR) != 0)
 		return 1;
 
+	idb_query("SET FRESHQUERYLOG queries.log");
+
 	snprintf(cmd, sizeof(cmd), "SET DATADIR %s", DATADIR);
-	idb_process_query(cmd);
-	idb_process_query("INIT test-data.cdb");
-	idb_process_query("CREATE TABLE users(id int, username string, password string, hash string) COMMENT 'Comment';");
-	idb_process_query("CREATE TABLE users2(id int, username string, password string, hash string);");
-	//idb_process_query("INSERT INTO users(id, username, password, hash) VALUES( 1, 'username', 'password', 'hash' );");
-	idb_process_query("UPDATE users SET username = 'un', hash = 'hh' WHERE id = 1");
-	//idb_process_query("COMMIT");
-	idb_process_query("ROLLBACK");
-	idb_process_query("DUMP");
-	idb_process_query("CLOSE");
+	idb_query(cmd);
+	idb_query("REINIT test-data.cdb");
+	idb_query("CREATE TABLE users(id int, username string, password string, hash string) COMMENT 'Comment';");
+	idb_query("CREATE TABLE users2(id int, username string, password string, hash string);");
+	idb_query("INSERT INTO users(id, username, password, hash) VALUES( 1, 'username', 'password', 'hash' );");
+	idb_query("INSERT INTO users(id, username, password, hash) VALUES( 2, 'username2', 'password2', 'hash2' );");
+	idb_query("INSERT INTO users(id, username, password, hash) VALUES( 3, 'username3', 'password3', 'hash3' );");
+	idb_query("INSERT INTO users(id, username, password, hash) VALUES( 4, 'username4', 'password4', 'hash4' );");
+	idb_query("INSERT INTO users(id, username, password, hash) VALUES( 5, 'username5', 'password5', 'hash5' );");
+	idb_query("UPDATE users SET username = 'username-updated-for-id2', hash = 'hash-updated-for-id2' WHERE id = 2");
+	idb_query("UPDATE users SET username = 'username-updated', hash = 'hash-updated' WHERE id = 1 AND username = 'username'");
+	idb_query("DUMP");
+
+	//idb_query("DELETE FROM users WHERE id = 1");
+	//idb_query("DROP TABLE users");
+	//idb_query("COMMIT");
+	//idb_query("ROLLBACK");
+
+	idb_query("SELECT * FROM users WHERE id = 3");
+	//idb_query("SELECT id,username FROM users WHERE id = 3");
+	idb_results_dump( idb_get_last_select_data() );
+	idb_free_last_select_data();
+	idb_results_dump( idb_get_last_select_data() );
+	idb_query("CLOSE");
 	return 0;
+}
+
+int main(void)
+{
+	int i;
 
 	//i = test_xml_query_data();
-	i = test_idb();
+	//i = test_idb();
+	i = test_idb_queries();
 
 	//i = load_project("./examples/test/test.project");
 	return i;

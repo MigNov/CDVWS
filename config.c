@@ -231,7 +231,6 @@ int config_load(char *filename, char *space)
 	char *directory = NULL;
 	char *cfg_filename = NULL;
 	char line[BUFSIZE] = { 0 };
-	char space2[1024] = { 0 };
 	int lineNum = 1;
 	int err = 0;
 	tTokenizer t;

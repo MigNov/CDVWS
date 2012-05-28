@@ -36,8 +36,9 @@ Where versions are noted below these are the versions tested to definitely
 work. For some of them you may be able to run with earlier releases, so
 please report any success to the mailing lists
 
+ dl
+ rt
  libxml2
- ... TO BE DONE ...
 
 Copyright /  License
 --------------------

@@ -1,20 +1,24 @@
 #ifndef CDVWS_H
 #define CDVWS_H
 
+/* For now it doesn't work without internal DB */
 #define USE_INTERNAL_DB
 
+#include <time.h>
 #include <stdio.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <dirent.h>
+#include <libgen.h>
 #include <string.h>
 #include <unistd.h>
 #include <malloc.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <dirent.h>
-#include <libgen.h>
-#include <dlfcn.h>
-#include <fcntl.h>
+#include <stdlib.h>
 #include <inttypes.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
 
 #define	BUFSIZE		8192
 
@@ -75,6 +79,20 @@ int numConfigVars;
 char *trim(char *str);
 int ensure_directory_existence(char *dir);
 
+#define TIME_CURRENT	0
+#define TIME_DIFF	1
+
+#define timespecsub(a, b, result)					\
+	do {								\
+		(result)->tv_sec = (a)->tv_sec - (b)->tv_sec;		\
+		(result)->tv_nsec = (a)->tv_nsec - (b)->tv_nsec;	\
+		if ((result)->tv_nsec < 0) {				\
+			--(result)->tv_sec;				\
+			(result)->tv_nsec += 1000000000;		\
+		}							\
+	} while (0)
+
+
 #ifdef USE_INTERNAL_DB
 typedef struct tTableDef {
 	long id;
@@ -128,27 +146,38 @@ typedef struct tTableDataSelect {
 } tTableDataSelect;
 
 tTableDataSelect tdsNone;
+tTableDataSelect _last_tds;
+
+tTableDataSelect idb_get_last_select_data(void);
 
 #define TDS_ROW(x)		tds.rows[x]
 #define TDS_FIELD_CNT(x)	tds.rows[x].num_fields
 #define TDS_ROW_FIELD(x, y)	tds.rows[x].tdi[y]
 #define TDS_LAST_ROW(x)		TDS_ROW_FIELD(x, TDS_FIELD_CNT(x) - 1)
 
-// tTableDataSelect tds
-// tds[0].row[0].name
-// tTableDataSelect -> tTableDataRow -> tTableDataField
-
-long _idb_table_id(char *name);
-
 tTableDef *idb_tables;
 tTableFieldDef *idb_fields;
 tTableData *idb_tabdata;
 
+int _idb_num_queries;
+int _idb_num_queries_create;
+int _idb_num_queries_drop;
+int _idb_num_queries_insert;
+int _idb_num_queries_update;
+int _idb_num_queries_delete;
+int _idb_num_queries_select;
+
 int idb_tables_num;
 int idb_fields_num;
 int idb_tabdata_num;
+int _idb_num_queries;
 char *_idb_filename;
 char *_idb_datadir;
+char *_idb_querylog;
+struct timespec _idb_last_ts;
+struct timespec _idb_session_start;
+#else
+typedef void tTableDataSelect;
 #endif
 
 #define UINT32STR(var, val)     \
@@ -172,15 +201,23 @@ char *_idb_datadir;
 int idb_init(void);
 void idb_free(void);
 long idb_table_id(char *name);
-int idb_create_table(char *name, int num_fields, tTableFieldDef *fields, char *comment);
+int idb_table_create(char *name, int num_fields, tTableFieldDef *fields, char *comment);
 int idb_table_insert(char *name, int num_data, tTableDataInput *td);
-int idb_table_update(char *table_name, long idRow, int num_data, tTableDataInput *td);
-int idb_table_delete(char *table_name, long idRow);
+int idb_table_update_row(char *table_name, long idRow, int num_data, tTableDataInput *td);
+int idb_table_update(char *table_name, int num_data, tTableDataInput *td, int num_where_fields, tTableDataInput *where_fields);
+int idb_table_delete_row(char *table_name, long idRow);
+int idb_table_delete(char *table_name, int num_where_fields, tTableDataInput *where_fields);
 tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, int num_where_fields, tTableDataInput *where_fields);
 void idb_dump(void);
 int idb_type_id(char *type);
 char *idb_get_filename(void);
-int idb_process_query(char *query);
+int idb_query(char *query);
+int idb_save(char *filename);
+void idb_results_dump(tTableDataSelect tds);
+void idb_results_free(tTableDataSelect *tds);
+int idb_load(char *filename);
+int idb_table_drop(char *table_name);
+void idb_free_last_select_data(void);
 
 /* Config stuff */
 int config_initialize(void);
@@ -190,6 +227,7 @@ int config_variable_get_idx(char *space, char *key);
 char *config_get(char *space, char *key);
 int config_load(char *filename, char *space);
 char* config_read(const char *filename, char *key);
+void config_variable_dump(char *space);
 void config_free(void);
 
 /* Definitions stuff */
@@ -209,6 +247,8 @@ off_t get_file_size(char *filename);
 unsigned char *data_fetch(int fd, int len, long *size, int extra);
 int load_project_directory(char *project_path);
 int load_project(char *project_file);
+int data_write(int fd, const void *data, size_t len, long *size);
+unsigned char *data_fetch(int fd, int len, long *size, int extra);
 
 /* Project related options */
 void project_info_init(void);
@@ -219,9 +259,17 @@ void project_info_cleanup(void);
 
 /* Module stuff */
 char *_modules_directory;
+int modules_initialize(void);
+char *modules_get_directory(void);
+int module_load(char *libname);
 
 /* Xml stuff */
+int xml_init(void);
+int xml_load(char *xmlFile);
+int xml_query(char *xmlFile, char *xPath);
 char *xml_get(char *basefile, char *node, char *name, char *value, char *out_value);
+void xml_dump(void);
+int xml_cleanup(void);
 
 /* Database stuff */
 char *database_format_query(char *xmlFile, char *table, char *type);
