@@ -1,0 +1,18 @@
+# Hosting settings
+# Just testing ports 2305 and 2306 are used for development
+host.http = localhost:2305
+host.secure = localhost:2306
+host.certificate.dir = certs
+host.certificate.root = rootcert.pem
+host.certificate.private = server-key.private
+host.certificate.public = server-key.pub
+
+# Project settings
+project.name = Article test project
+project.administrator.name = Michal Novotny
+project.administrator.email = mignov@gmail.com
+
+# Project configuration
+project.config.file = config
+project.config.directory.definitions = definition
+project.config.directory.views = view
