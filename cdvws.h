@@ -354,4 +354,7 @@ unsigned char *wrap_mincrypt_base64_encode(const char *in, size_t *size);
 unsigned char *wrap_mincrypt_base64_decode(const char *in, size_t *size);
 void wrap_mincrypt_cleanup(void);
 
+/* Shell functions */
+int run_shell(void);
+
 #endif
