@@ -104,12 +104,14 @@ unsigned char *data_fetch(int fd, int len, long *size, int extra)
 
 void project_info_init(void)
 {
+	project_info.root_dir = NULL;
 	project_info.name = NULL;
 	project_info.admin_name = NULL;
 	project_info.admin_mail = NULL;
 	project_info.file_config = NULL;
 	project_info.dir_defs = NULL;
 	project_info.dir_views = NULL;
+	project_info.dir_files = NULL;
 
 	project_info.host_http = NULL;
 	project_info.host_secure = NULL;
@@ -121,12 +123,14 @@ void project_info_init(void)
 
 void project_info_fill(void)
 {
+	project_info.root_dir = strdup( _proj_root_dir );
 	project_info.name = strdup( config_get("project", "name") );
 	project_info.admin_name = strdup( config_get("project", "administrator.name") );
 	project_info.admin_mail = config_get("project", "administrator.email");
 	project_info.file_config = config_get("project", "config.file");
 	project_info.dir_defs = config_get("project", "config.directory.definitions");
 	project_info.dir_views = config_get("project", "config.directory.views");
+	project_info.dir_files = config_get("project", "config.directory.files");
 
 	project_info.host_http = config_get("host", "http");
 	project_info.host_secure = config_get("host", "secure");
@@ -172,6 +176,10 @@ void project_info_dump(void)
 		printf("\tProject name: '%s'\n", project_info.name);
 		num++;
 	}
+	if (project_info.root_dir != NULL) {
+		printf("\tProject root directory: '%s'\n", project_info.root_dir);
+		num++;
+	}
 	if (project_info.admin_name != NULL) {
 		printf("\tProject administrator: '%s'\n", project_info.admin_name);
 		num++;
@@ -192,6 +200,10 @@ void project_info_dump(void)
 		printf("\tProject views dir: '%s'\n", project_info.dir_views);
 		num++;
 	}
+	if (project_info.dir_files != NULL) {
+		printf("\tProject files dir: '%s'\n", project_info.dir_files);
+		num++;
+	}
 
 	if (num == 0)
 		printf("\tNo project data available\n");
@@ -205,6 +217,8 @@ char *project_info_get(char *type)
 		return strdup(project_info.name);
 	if ((project_info.admin_name != NULL)  && (strcmp(type, "admin_name") == 0))
 		return strdup(project_info.admin_name);
+	if ((project_info.root_dir != NULL) && (strcmp(type, "dir_root") == 0))
+		return strdup(project_info.root_dir);
 	if ((project_info.admin_mail != NULL) && (strcmp(type, "admin_mail") == 0))
 		return strdup(project_info.admin_mail);
 	if ((project_info.file_config != NULL) && (strcmp(type, "file_config") == 0))
@@ -213,6 +227,8 @@ char *project_info_get(char *type)
 		return strdup(project_info.dir_defs);
 	if ((project_info.dir_views != NULL) && (strcmp(type, "dir_views") == 0))
 		return strdup(project_info.dir_views);
+	if ((project_info.dir_files != NULL) && (strcmp(type, "dir_files") == 0))
+		return strdup(project_info.dir_files);
 	if ((project_info.host_http != NULL) && (strcmp(type, "host_http") == 0))
 		return strdup(project_info.host_http);
 	if ((project_info.host_secure != NULL) && (strcmp(type, "host_secure") == 0))
@@ -232,11 +248,13 @@ char *project_info_get(char *type)
 void project_info_cleanup(void)
 {
 	free(project_info.name);
+	free(project_info.root_dir);
 	free(project_info.admin_name);
 	free(project_info.admin_mail);
 	free(project_info.file_config);
 	free(project_info.dir_defs);
 	free(project_info.dir_views);
+	free(project_info.dir_files);
 	free(project_info.host_http);
 	free(project_info.host_secure);
 	free(project_info.cert_dir);
@@ -293,6 +311,8 @@ int load_project(char *project_file)
 
 	project_basedir = get_full_path( dirname( strdup(project_file) ) );
 	basedir = strdup(project_basedir);
+
+	_proj_root_dir = basedir;
 
 	if (access(project_file, R_OK) != 0) {
 		ret = -ENOENT;
@@ -352,8 +372,11 @@ int load_project(char *project_file)
 	}
 
 finish:
-	if (ret != 0)
+	if (ret != 0) {
+		DPRINTF("%s: Invalid error code %d, cleaning up\n", __FUNCTION__,
+			ret);
 		cleanup();
+	}
 
 	return ret;
 }
@@ -371,6 +394,11 @@ int _try_project_match(char *pd, char *host)
 	struct dirent *de = NULL;
 	DIR *d = opendir(pd);
 
+	if (host == NULL) {
+		DPRINTF("%s: Host to match cannot be null\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
 	if (d == NULL)
 		ret = -EIO;
 	else {
@@ -386,14 +414,21 @@ int _try_project_match(char *pd, char *host)
 					char *host_http = project_info_get("host_http");
 					char *host_secure = project_info_get("host_secure");
 
-					if ((host_http != NULL)
-						&& ((strcmp(host_http, host) == 0)
-							|| (strcmp(host_secure, host) == 0))) {
-						project_dump();
-						ret = 0;
-						break;
+					if (
+						((host_http != NULL) && (strcmp(host_http, host) == 0))
+						|| ((host_secure != NULL) && (strcmp(host_secure, host) == 0))
+						) {
+								project_dump();
+								ret = 0;
+								break;
+					}
+					else {
+						DPRINTF("%s: Project doesn't match ((%s != %s) && (%s != %s))\n",
+							__FUNCTION__, host, host_http ? host_http : "<null>",
+								host, host_secure ? host_secure : "<null>");
 					}
 
+					DPRINTF("%s: Cleaning up\n", __FUNCTION__);
 					cleanup();
 				}
 			}
@@ -524,6 +559,23 @@ char *trim(char *str)
 		DPRINTF("%s: Resulting string is '%s'\n", __FUNCTION__, str);
 
         return strdup(str);
+}
+
+char *get_mime_type(char *path)
+{
+	FILE *fp = NULL;
+	char tmp[4096] = { 0 };
+
+	snprintf(tmp, sizeof(tmp), "file --mime-type -b %s", path);
+	fp = popen(tmp, "r");
+	memset(tmp, 0, sizeof(tmp));
+	fgets(tmp, sizeof(tmp), fp);
+	fclose(fp);
+
+	if (tmp[strlen(tmp) - 1] == '\n')
+		tmp[strlen(tmp) - 1] = 0;
+
+	return strdup( tmp );
 }
 
 char *process_read_handler(char *filename)

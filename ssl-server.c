@@ -121,8 +121,6 @@ int process_request_ssl(SSL *ssl, int s, struct sockaddr_in client_addr, tProces
 		}
 		SSL_free(ssl);
 		close(s);
-
-		DPRINTF("%s: Process request handler returned 1 to quit\n", __FUNCTION__);
 		return 1;
 	}
 
@@ -152,7 +150,7 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 		}
 	}
 
-	if (req(NULL, NULL, s, client_addr, _tcp_buf, _tcp_total) == 1) {
+	if ((_tcp_total == 0) || ((_tcp_total > 0) && (req(NULL, NULL, s, client_addr, _tcp_buf, _tcp_total) == 1))) {
 		close(s);
 		return 1;
 	}
@@ -162,8 +160,8 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 
 int process_request(SSL *ssl, int s, struct sockaddr_in client_addr, tProcessRequest req)
 {
-	DPRINTF("%s: Establishing %s connection (use 'gdb -p %d' for debugging)\n", __FUNCTION__, (ssl != NULL)
-		? "secure" : "insecure", getpid() );
+	DPRINTF("%s: Establishing %s connection\n", __FUNCTION__, (ssl != NULL)
+		? "secure" : "insecure");
 
 	memset(_tcp_buf, 0, sizeof(_tcp_buf));
 	_tcp_total = 0;

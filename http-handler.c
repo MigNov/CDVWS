@@ -9,6 +9,61 @@ do { fprintf(stderr, "[cdv/http-handler] " fmt , ## __VA_ARGS__); } while (0)
 do {} while(0)
 #endif
 
+void http_host_header(BIO *io, int connected, int error_code, char *mt)
+{
+	char tmp[TCP_BUF_SIZE] = { 0 };
+
+	if (mt == NULL)
+		mt = strdup( "application/octet-stream" );
+
+	strcpy(tmp, "HTTP/1.1 ");
+	if (error_code == HTTP_CODE_OK)
+		strcat(tmp, "200 OK");
+	else
+	if (error_code == HTTP_CODE_BAD_REQUEST)
+		strcat(tmp, "400 Bad Request");
+	else
+	if (error_code == HTTP_CODE_UNAUTHORIZED)
+		strcat(tmp, "401 Unauthorized");
+	else
+	if (error_code == HTTP_CODE_FORBIDDEN)
+		strcat(tmp, "403 Forbidden");
+	else
+	if (error_code == HTTP_CODE_NOT_FOUND)
+		strcat(tmp, "404 Not Found");
+	else
+	if (error_code == HTTP_CODE_NOT_ALLOWED)
+		strcat(tmp, "405 Not Allowed");
+
+	strcat(tmp, "\nContent-Type: ");
+	strcat(tmp, mt);
+	strcat(tmp, "\n\n");
+
+	write_common(io, connected, tmp, strlen(tmp));
+}
+
+int http_host_put_file(BIO *io, int connected, char *path)
+{
+	int fd;
+	char tmp[TCP_BUF_SIZE] = { 0 };
+	char *mt = NULL;
+	long size = -1, len = -1;
+
+	if ((size = get_file_size( path )) <= 0)
+		return 0;
+
+	mt = get_mime_type(path);
+	fd = open(path, O_RDONLY);
+	http_host_header(io, connected, 200, mt);
+	free(mt);
+
+	while ((len = read(fd, tmp, sizeof(tmp))) > 0)
+		write_common(io, connected, tmp, len);
+	close(fd);
+
+	return 1;
+}
+
 int http_host_unknown(BIO *io, int connected, char *host)
 {
 	char tmp[TCP_BUF_SIZE] = { 0 };
@@ -41,7 +96,7 @@ int http_host_page_not_found(BIO *io, int connected, char *path)
 
 int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len)
 {
-	int i;
+	int i, found;
 	tTokenizer t;
 	char *ua = NULL;
 	char *host = NULL;
@@ -88,13 +143,38 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 
 	free_tokens(t);
 
+	if (host == NULL)
+		return http_host_unknown(io, connected, "unknown");
+
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
 	if (find_project_for_web("examples", host) != 0)
 		return http_host_unknown(io, connected, host);
 
-	http_host_page_not_found(io, connected, path);
+	found = 0;
+
+	/* First, try to look for the file in files */
+	char *dir = NULL;
+	if ((dir = project_info_get("dir_files")) != NULL) {
+		char *tmp = project_info_get("dir_root");
+		char loc[4096] = { 0 };
+
+		if (tmp != NULL) {
+			snprintf(loc, sizeof(loc), "%s/%s%s", tmp, dir, path);
+			DPRINTF("%s: Real file is '%s'\n", __FUNCTION__, loc);
+			if (access(loc, R_OK) == 0)
+				found = (http_host_put_file(io, connected, loc) != 0);
+			free(tmp);
+		}
+		free(dir);
+	}
+
+	/* TODO: Implement the CDV-code/script processing to use IDB and other features */
+
+	/* If still not found then return error to response */
+	if (found == 0)
+		http_host_page_not_found(io, connected, path);
 
 	cleanup();
 	return 1;

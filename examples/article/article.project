@@ -16,3 +16,4 @@ project.administrator.email = mignov@gmail.com
 project.config.file = config
 project.config.directory.definitions = definition
 project.config.directory.views = view
+project.config.directory.files = files

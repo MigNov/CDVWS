@@ -49,7 +49,7 @@ unsigned char *mincrypt_base64_decode(const char *in, size_t *size);
 #endif
 
 #ifdef USE_SSL
-#define TCP_BUF_SIZE	65536
+#define TCP_BUF_SIZE	1048576
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -94,11 +94,13 @@ typedef struct tConfigVariable {
 
 typedef struct tProjectInformation {
 	char *name;
+	char *root_dir;
 	char *admin_name;
 	char *admin_mail;
 	char *file_config;
 	char *dir_defs;
 	char *dir_views;
+	char *dir_files;
 	char *host_http;
 	char *host_secure;
 	char *cert_dir;
@@ -119,6 +121,7 @@ int xml_numIter;
 int xml_numAttr;
 tAttr *xattr;
 
+char *_proj_root_dir;
 tProjectInformation project_info;
 
 char *basedir;
@@ -141,6 +144,12 @@ int ensure_directory_existence(char *dir);
 		}							\
 	} while (0)
 
+#define HTTP_CODE_OK		200
+#define HTTP_CODE_BAD_REQUEST	400
+#define HTTP_CODE_UNAUTHORIZED	401
+#define HTTP_CODE_FORBIDDEN	403
+#define HTTP_CODE_NOT_FOUND	404
+#define HTTP_CODE_NOT_ALLOWED	405
 
 #ifdef USE_INTERNAL_DB
 typedef struct tTableDef {
@@ -301,6 +310,7 @@ int load_project(char *project_file);
 int data_write(int fd, const void *data, size_t len, long *size);
 unsigned char *data_fetch(int fd, int len, long *size, int extra);
 void project_dump(void);
+char *get_mime_type(char *path);
 
 /* Project related options */
 void project_info_init(void);
