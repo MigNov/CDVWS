@@ -351,17 +351,17 @@ int load_project(char *project_file)
 		goto finish;
 	}
 
-	/* TODO: Implement definition processing and view substitutions */
-
-	//printf("SQL Type: %s\n", config_get("sql", "type") );
-
-	project_info_dump();
-	config_variable_dump(NULL);
-
 finish:
-	//cleanup();
+	if (ret != 0)
+		cleanup();
 
 	return ret;
+}
+
+void project_dump(void)
+{
+	project_info_dump();
+	config_variable_dump(NULL);
 }
 
 int _try_project_match(char *pd, char *host)
@@ -389,6 +389,7 @@ int _try_project_match(char *pd, char *host)
 					if ((host_http != NULL)
 						&& ((strcmp(host_http, host) == 0)
 							|| (strcmp(host_secure, host) == 0))) {
+						project_dump();
 						ret = 0;
 						break;
 					}

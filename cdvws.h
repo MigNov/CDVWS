@@ -26,6 +26,28 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef USE_MINCRYPT
+/* We cannot include mincrypt.h because of re-introducing definitions */
+void mincrypt_set_password(char *salt, char *password, int vector_multiplier);
+int mincrypt_set_encoding_type(int type);
+void mincrypt_dump_vectors(char *dump_file);
+int mincrypt_read_key_file(char *keyfile, int *oIsPrivate);
+void mincrypt_cleanup(void);
+unsigned char *mincrypt_encrypt(unsigned char *block, size_t size, int id, size_t *new_size);
+unsigned char *mincrypt_decrypt(unsigned char *block, size_t size, int id, size_t *new_size, int *read_size);
+int mincrypt_encrypt_file(char *filename1, char *filename2, char *salt, char *password, int vector_multiplier);
+int mincrypt_decrypt_file(char *filename1, char *filename2, char *salt, char *password, int vector_multiplier);
+int mincrypt_generate_keys(int bits, char *salt, char *password, char *key_private, char *key_public);
+long mincrypt_get_version(void);
+int mincrypt_set_simple_mode(int enable);
+unsigned char *mincrypt_convert_to_four_system(unsigned char *data, int len);
+unsigned char *mincrypt_convert_from_four_system(unsigned char *data, int len);
+int mincrypt_set_four_system_quartet(char *quartet);
+char *mincrypt_get_four_system_quartet(void);
+unsigned char *mincrypt_base64_encode(const char *in, size_t *size);
+unsigned char *mincrypt_base64_decode(const char *in, size_t *size);
+#endif
+
 #ifdef USE_SSL
 #define TCP_BUF_SIZE	65536
 #include <openssl/bio.h>
@@ -194,6 +216,8 @@ int _idb_num_queries_update;
 int _idb_num_queries_delete;
 int _idb_num_queries_select;
 
+int _idb_mincrypt_enabled;
+
 int idb_tables_num;
 int idb_fields_num;
 int idb_tabdata_num;
@@ -276,6 +300,7 @@ int load_project_directory(char *project_path);
 int load_project(char *project_file);
 int data_write(int fd, const void *data, size_t len, long *size);
 unsigned char *data_fetch(int fd, int len, long *size, int extra);
+void project_dump(void);
 
 /* Project related options */
 void project_info_init(void);
@@ -306,5 +331,15 @@ char *database_format_query(char *xmlFile, char *table, char *type);
 int tcp_listen(int port);
 int socket_has_data(int sfd, long maxtime);
 int write_common(BIO *io, int sock, char *data, int len);
+
+/* MinCrypt wrapper stuff */
+long wrap_mincrypt_get_version(void);
+int wrap_mincrypt_set_password(char *salt, char *password);
+unsigned char *wrap_mincrypt_encrypt(unsigned char *block, size_t size, int id, size_t *new_size);
+unsigned char *wrap_mincrypt_decrypt(unsigned char *block, size_t size, int id, size_t *new_size, int *read_size);
+int wrap_mincrypt_set_encoding_type(int type);
+unsigned char *wrap_mincrypt_base64_encode(const char *in, size_t *size);
+unsigned char *wrap_mincrypt_base64_decode(const char *in, size_t *size);
+void wrap_mincrypt_cleanup(void);
 
 #endif

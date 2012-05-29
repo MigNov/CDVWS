@@ -161,6 +161,8 @@ int test_idb_queries(void)
 
 	snprintf(cmd, sizeof(cmd), "SET DATADIR %s", DATADIR);
 	idb_query(cmd);
+	idb_query("SET MINCRYPT password salt");
+	//idb_query("SET MINCRYPT test tester");
 	idb_query("REINIT test-data.cdb");
 	idb_query("CREATE TABLE users(id int, username string, password string, hash string) COMMENT 'Comment';");
 	idb_query("CREATE TABLE users2(id int, username string, password string, hash string);");
@@ -175,7 +177,7 @@ int test_idb_queries(void)
 
 	//idb_query("DELETE FROM users WHERE id = 1");
 	//idb_query("DROP TABLE users");
-	//idb_query("COMMIT");
+	idb_query("COMMIT");
 	//idb_query("ROLLBACK");
 
 	idb_query("SELECT * FROM users WHERE id = 3");
@@ -346,7 +348,7 @@ int main(void)
 {
 	int i;
 
-	run_servers(2305, 2306);
+	//run_servers(2305, 2306);
 
 	//i = test_xml_query_data();
 	//i = test_idb();

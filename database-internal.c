@@ -31,6 +31,8 @@ int idb_init(void)
 	_idb_datadir  = NULL;
 	_idb_querylog = NULL;
 
+	_idb_mincrypt_enabled = 0;
+
 	_idb_num_queries = 0;
 	_idb_num_queries_create = 0;
 	_idb_num_queries_drop = 0;
@@ -204,6 +206,31 @@ int idb_query(char *query)
 				__FUNCTION__, _idb_querylog);
 
 			ret = 0;
+		}
+		else
+		if (strcmp(t.tokens[1], "MINCRYPT") == 0) {
+			if (t.numTokens < 4)
+				ret = -EINVAL;
+			else {
+				long ver = wrap_mincrypt_get_version();
+				if (ver == -1)
+					DPRINTF("%s: Not compiled against minCrypt library\n",
+						__FUNCTION__);
+				else {
+					DPRINTF("%s: Found minCrypt version %d.%d.%d\n", __FUNCTION__,
+						(int)((ver >> 16) & 0xFF), (int)((ver >> 8 & 0xFF)),
+						(int)(ver & 0xFF));
+
+					if (wrap_mincrypt_set_password(t.tokens[2], t.tokens[3]) == 0) {
+						DPRINTF("%s: minCrypt initialization vectors set, enabling.\n",
+							__FUNCTION__);
+						_idb_mincrypt_enabled = 1;
+					}
+
+					ret = 0;
+				}
+				
+			}
 		}
 
 		free_tokens(t);
@@ -672,6 +699,9 @@ void idb_free(void)
 	struct timespec ts;
 	struct timespec tss;
 	float myTime = -1;
+
+	if (_idb_mincrypt_enabled == 1)
+		wrap_mincrypt_cleanup();
 
 	free(idb_tables);
 	free(idb_fields);
@@ -1222,6 +1252,27 @@ int idb_table_insert(char *table_name, int num_data, tTableDataInput *td)
 			if (idRow == -1)
 				idRow = _idb_table_get_next_row(idField);
 
+			/* minCrypt encryption is currently supported only for string values */
+			if ((_idb_mincrypt_enabled == 1)
+				&& (_idb_get_type_id_from_field(idField) == IDB_TYPE_STR)) {
+				size_t nl;
+				char *tmp = (char *)wrap_mincrypt_encrypt( (unsigned char *)td[i].sValue,
+						strlen(td[i].sValue), idRow, &nl);
+
+				if (tmp != NULL) {
+					char *tmp2 = (char *)wrap_mincrypt_base64_encode((char *)tmp, &nl);
+
+					if (tmp2 != NULL) {
+						free(td[i].sValue);
+
+						/* Substitute string value to base64-encoded encrypted value */
+						td[i].sValue = strdup( tmp2 );
+						free(tmp2);
+					}
+					free(tmp);
+				}
+			}
+
 			DPRINTF("%s: Inserting new field '%s' to '%s', idField = %ld, idRow = %ld\n", __FUNCTION__,
 				td[i].name, table_name, idField, idRow);
 			if (_idb_table_row_field_add(idField, idRow, td[i]) > 0)
@@ -1258,7 +1309,30 @@ int _idb_row_fields_match(char *table, long idRow, int num_fields, tTableDataInp
 									break;
 						case IDB_TYPE_LONG:	ret += (fields[i].lValue == idb_tabdata[j].lValue);
 									break;
-						case IDB_TYPE_STR:	ret += (strcmp(fields[i].sValue, idb_tabdata[j].sValue) == 0);
+						case IDB_TYPE_STR:	if (_idb_mincrypt_enabled == 0) {
+										ret += (strcmp(fields[i].sValue, idb_tabdata[j].sValue) == 0);
+									}
+									else {
+										char *tmp = NULL;
+										char *tmp2 = NULL;
+										size_t len = strlen(idb_tabdata[j].sValue);
+										size_t rsize = -1;
+
+										tmp = wrap_mincrypt_base64_decode((unsigned char *)
+											idb_tabdata[j].sValue, &len);
+
+										if (tmp != NULL) {
+											tmp2 = wrap_mincrypt_decrypt((char *)tmp, len,
+												idb_tabdata[j].idRow,
+												&len, &rsize);
+											if (tmp2 != NULL) {
+												tmp2[len] = 0;
+												ret += (strcmp(fields[i].sValue, tmp2) == 0);
+												free(tmp2);
+											}
+										}
+										free(tmp);
+									}
 									break;
 						case IDB_TYPE_FILE:	ret += 1;
 									DPRINTF("%s: File conditions are not supported!\n", __FUNCTION__);
@@ -1295,6 +1369,7 @@ int idb_table_update_row(char *table_name, long idRow, int num_data, tTableDataI
 int idb_table_update(char *table_name, int num_fields, tTableDataInput *td, int num_where_fields, tTableDataInput *where_fields)
 {
 	long i, j;
+	long idRow;
 	long row_cnt;
 	long idTable;
 	long idField;
@@ -1318,6 +1393,7 @@ int idb_table_update(char *table_name, int num_fields, tTableDataInput *td, int 
 					continue;
 				FILE *fp = NULL;
 				row_cnt++;
+				idRow = idb_tabdata[j].idRow;
 
 				DPRINTF("%s: Found matching field with internal ID %ld\n", __FUNCTION__, idb_tabdata[j].id);
 				switch (_idb_get_type_id_from_field(idField)) {
@@ -1330,6 +1406,23 @@ int idb_table_update(char *table_name, int num_fields, tTableDataInput *td, int 
 					case IDB_TYPE_STR:
 								free(idb_tabdata[j].sValue);
 								idb_tabdata[j].sValue = NULL;
+								if (_idb_mincrypt_enabled == 1) {
+									size_t nl;
+									unsigned char *tmp = wrap_mincrypt_encrypt(
+										(unsigned char *)td[i].sValue, strlen(td[i].sValue),
+										idRow, &nl);
+
+									if (tmp != NULL) {
+										char *tmp2 = wrap_mincrypt_base64_encode(tmp, &nl);
+
+										if (tmp2 != NULL) {
+											free(td[i].sValue);
+											td[i].sValue = strdup( tmp2 );
+											free(tmp2);
+										}
+										free(tmp);
+									}
+								}
 								idb_tabdata[j].sValue = strdup( td[i].sValue );
 								break;
 					case IDB_TYPE_FILE:
@@ -1501,8 +1594,36 @@ int _idb_tabledata_dump(void)
 		if (fieldType == IDB_TYPE_LONG)
 			DPRINTF("\tLong value: %ld\n", idb_tabdata[i].lValue);
 		else
-		if (fieldType == IDB_TYPE_STR)
-			DPRINTF("\tString value: %s\n", idb_tabdata[i].sValue);
+		if (fieldType == IDB_TYPE_STR) {
+			char *data = NULL;
+			/* Provide valid data dump even if using encryption */
+			if (_idb_mincrypt_enabled == 1) {
+				char *tmp = NULL;
+				char *tmp2 = NULL;
+				size_t len = strlen(idb_tabdata[i].sValue);
+				size_t rsize = -1;
+
+				tmp = wrap_mincrypt_base64_decode((unsigned char *)
+					idb_tabdata[i].sValue, &len);
+
+				if (tmp != NULL) {
+					tmp2 = wrap_mincrypt_decrypt(tmp, len,
+						idb_tabdata[i].idRow,
+						&len, &rsize);
+					if (tmp2 != NULL) {
+						tmp2[len] = 0;
+						data = strdup( tmp2 );
+						free(tmp2);
+					}
+				}
+				free(tmp);
+			}
+			else
+				data = strdup( idb_tabdata[i].sValue );
+			DPRINTF("\tString value: %s%s\n", data,
+				(_idb_mincrypt_enabled == 1) ? " (showing decrypted value)" : "");
+			free(data);
+		}
 		else
 		if (fieldType == IDB_TYPE_FILE)
 			DPRINTF("\tFile value: %s (%ld bytes)\n", idb_tabdata[i].sValue,
@@ -1681,6 +1802,30 @@ tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, in
 							__FUNCTION__);
 						break;
 					case IDB_TYPE_STR:
+						if (_idb_mincrypt_enabled == 1) {
+							char *tmp = NULL;
+							char *tmp2 = NULL;
+							size_t len = strlen(idb_tabdata[j].sValue);
+							size_t rsize = -1;
+
+							tmp = wrap_mincrypt_base64_decode((unsigned char *)
+								idb_tabdata[j].sValue, &len);
+							if (tmp != NULL) {
+								tmp2 = wrap_mincrypt_decrypt(tmp, len,
+									idb_tabdata[j].idRow,
+									&len, &rsize);
+
+								if (tmp2 != NULL) {
+									tmp2[len] = 0;
+
+									free(idb_tabdata[j].sValue);
+									idb_tabdata[j].sValue = strdup( tmp2 );
+
+									free(tmp2);
+								}
+								free(tmp);
+							}
+						}
 						TDS_LAST_ROW(row_idx).sValue = strdup(
 								idb_tabdata[j].sValue);
 						DPRINTF("%s: Setting up string value to result set\n",
