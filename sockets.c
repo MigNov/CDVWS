@@ -68,3 +68,56 @@ int socket_has_data(int sfd, long maxtime)
 	return (rc == 1);
 }
 
+int run_server(int port, char *pk, char *pub, char *root_key)
+{
+	if ((port < 0) || (port > 65535))
+		return -EINVAL;
+
+	/* Applicable only for PK and PUB set, i.e. SSL connection */
+	if ((pk != NULL) && (pub != NULL) && (root_key != NULL)) {
+		if (fork() == 0) {
+			int sock;
+			SSL_CTX *ctx = NULL;
+
+			DPRINTF("%s: Opening SSL server on port %d\n",
+				__FUNCTION__, port);
+			ctx = init_ssl_layer(pk, pub, root_key);
+			if ((sock = tcp_listen(port)) == -1)
+				_exit(1);
+
+			accept_loop(ctx, sock, process_request_common);
+			SSL_CTX_free(ctx);
+			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			close(sock);
+			exit(0);
+		}
+		else
+			wait(NULL);
+
+		wait(NULL);
+	}
+
+	/* Applicable only for PK and PUB unset, i.e. non-SSL connection */
+	if (port > 0) {
+		if (fork() == 0) {
+			int sock;
+
+			DPRINTF("%s: Opening server on port %d\n", __FUNCTION__, port);
+			if ((sock = tcp_listen(port)) == -1)
+				_exit(1);
+
+			accept_loop(NULL, sock, process_request_common);
+
+			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			close(sock);
+			exit(0);
+		}
+		else
+			wait(NULL);
+
+		wait(NULL);
+	}
+
+	return 0;
+}
+

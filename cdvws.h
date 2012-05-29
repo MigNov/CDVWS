@@ -331,6 +331,8 @@ char *database_format_query(char *xmlFile, char *table, char *type);
 int tcp_listen(int port);
 int socket_has_data(int sfd, long maxtime);
 int write_common(BIO *io, int sock, char *data, int len);
+int run_server(int port, char *pk, char *pub, char *root_key);
+int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len);
 
 /* MinCrypt wrapper stuff */
 long wrap_mincrypt_get_version(void);
