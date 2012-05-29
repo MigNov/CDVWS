@@ -28,6 +28,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#ifdef USE_READLINE
+#include <readline/readline.h>
+#include <readline/history.h>
+#endif
+
 #ifdef USE_MINCRYPT
 /* We cannot include mincrypt.h because of re-introducing definitions */
 void mincrypt_set_password(char *salt, char *password, int vector_multiplier);
@@ -134,6 +139,7 @@ FILE *_dump_fp;
 
 char *trim(char *str);
 int ensure_directory_existence(char *dir);
+float get_time_float_ms(struct timespec ts, struct timespec te);
 
 #define TIME_CURRENT	0
 #define TIME_DIFF	1
@@ -321,6 +327,7 @@ int dump_set_file(char *filename);
 void dump_printf(const char *fmt, ...);
 int dump_file_is_set(void);
 void dump_unset_file(void);
+struct timespec utils_get_time(int diff);
 
 /* Project related options */
 void project_info_init(void);

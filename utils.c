@@ -65,6 +65,39 @@ void total_cleanup(void)
 	}
 }
 
+struct timespec utils_get_time(int diff)
+{
+	struct timespec ts;
+	struct timespec res_ts;
+	struct timespec tsNull = { 0 };
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	if (diff == 1) {
+		if ((_idb_last_ts.tv_nsec == 0)
+			&& (_idb_last_ts.tv_sec == 0)) {
+			DPRINTF("%s: No time measured yet, cannot get difference\n",
+				__FUNCTION__);
+			res_ts = tsNull;
+		}
+		else
+			timespecsub(&ts, &_idb_last_ts, &res_ts);
+	}
+	else
+		res_ts = ts;
+
+	_idb_last_ts = ts;
+
+	return res_ts;
+}
+
+
+float get_time_float_us(struct timespec ts, struct timespec te)
+{
+	struct timespec res_ts;
+	timespecsub(&ts, &te, &res_ts);
+	return ((res_ts.tv_sec * 1000000000) + res_ts.tv_nsec) / (float)1000;
+}
+
 int ensure_directory_existence(char *dir)
 {
 	struct stat st;

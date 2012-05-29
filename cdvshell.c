@@ -9,6 +9,15 @@ do { fprintf(stderr, "[cdv/cdv-shell   ] " fmt , ## __VA_ARGS__); } while (0)
 do {} while(0)
 #endif
 
+#ifdef USE_READLINE
+char *get_string(char *prompt)
+{
+	char *tmp = readline(prompt);
+
+	add_history(tmp);
+	return tmp;
+}
+#else
 char *get_string(char *prompt)
 {
 	int c;
@@ -23,9 +32,14 @@ char *get_string(char *prompt)
 
 	return strdup( buf );
 }
+#endif
 
 int idb_shell(void)
 {
+	float fTm = -1;
+	struct timespec ts = utils_get_time( TIME_CURRENT );
+	struct timespec tse;
+
 	printf("\nCDV WebServer v%s internal database (iDB) shell\n", VERSION);
 	while (1) {
 		char *str = get_string("idb> ");
@@ -103,11 +117,21 @@ int idb_shell(void)
 
 	idb_free();
 	printf("\n");
+
+	tse = utils_get_time( TIME_CURRENT );
+	fTm = get_time_float_us( tse, ts );
+	DPRINTF("%s: IDB Shell session time is %.3f s\n", __FUNCTION__,
+		fTm / 1000000);
+
 	return 0;
 }
 
 int run_shell(void)
 {
+	float fTm = -1;
+	struct timespec ts = utils_get_time( TIME_CURRENT );
+	struct timespec tse;
+
 	first_initialize();
 
 	printf("\nCDV WebServer v%s shell\n", VERSION);
@@ -225,6 +249,11 @@ int run_shell(void)
 		DPRINTF("%s: Project loaded, cleaning up\n", __FUNCTION__);
 		total_cleanup();
 	}
+
+	tse = utils_get_time( TIME_CURRENT );
+	fTm = get_time_float_us( tse, ts );
+	DPRINTF("%s: Shell session time is %.3f s\n", __FUNCTION__,
+		fTm / 1000000);
 
 	return 0;
 }

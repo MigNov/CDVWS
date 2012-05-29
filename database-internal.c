@@ -62,27 +62,7 @@ int idb_init(void)
 
 struct timespec idb_get_time(int diff)
 {
-	struct timespec ts;
-	struct timespec res_ts;
-	struct timespec tsNull = { 0 };
-
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	if (diff == 1) {
-		if ((_idb_last_ts.tv_nsec == 0)
-			&& (_idb_last_ts.tv_sec == 0)) {
-			DPRINTF("%s: No time measured yet, cannot get difference\n",
-				__FUNCTION__);
-			res_ts = tsNull;
-		}
-		else
-			timespecsub(&ts, &_idb_last_ts, &res_ts);
-	}
-	else
-		res_ts = ts;
-
-	_idb_last_ts = ts;
-
-	return res_ts;
+	return utils_get_time(diff);
 }
 
 char *idb_get_filename(void)
@@ -2425,8 +2405,6 @@ int idb_load(char *filename)
 	fd = open(filename, O_RDONLY);
 	if (fd < 0)
 		return -errno;
-
-	_idb_session_start = idb_get_time( TIME_CURRENT );
 
 	/* Read the CDVDB header */
 	tmp = data_fetch(fd, 5, &data_len, 0);
