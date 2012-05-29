@@ -1,6 +1,8 @@
 #ifndef CDVWS_H
 #define CDVWS_H
 
+#define VERSION		"0.0.1"
+
 /* For now it doesn't work without internal DB */
 #define USE_INTERNAL_DB
 #define USE_SSL
@@ -127,6 +129,8 @@ tProjectInformation project_info;
 char *basedir;
 tConfigVariable *configVars;
 int numConfigVars;
+int _shell_project_loaded;
+FILE *_dump_fp;
 
 char *trim(char *str);
 int ensure_directory_existence(char *dir);
@@ -298,6 +302,8 @@ int definitions_load_directory(char *dir);
 /* Utils stuff */
 int initialize(void);
 void cleanup(void);
+void total_cleanup(void);
+int first_initialize(void);
 tTokenizer tokenize(char *string, char *by);
 void free_tokens(tTokenizer t);
 char *trim(char *str);
@@ -311,6 +317,10 @@ int data_write(int fd, const void *data, size_t len, long *size);
 unsigned char *data_fetch(int fd, int len, long *size, int extra);
 void project_dump(void);
 char *get_mime_type(char *path);
+int dump_set_file(char *filename);
+void dump_printf(const char *fmt, ...);
+int dump_file_is_set(void);
+void dump_unset_file(void);
 
 /* Project related options */
 void project_info_init(void);

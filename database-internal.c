@@ -161,6 +161,7 @@ int idb_query(char *query)
 
 		free_tokens(t);
 	}
+	else
 	if (strncmp(query, "REINIT", 6) == 0) {
 		t = tokenize(query, " ");
 
@@ -204,6 +205,12 @@ int idb_query(char *query)
 
 			DPRINTF("%s: Setting up query logging to '%s'\n",
 				__FUNCTION__, _idb_querylog);
+
+			ret = 0;
+		}
+		else
+		if (strcmp(t.tokens[1], "FILENAME") == 0) {
+			_idb_filename = strdup( t.tokens[2] );
 
 			ret = 0;
 		}
@@ -708,6 +715,9 @@ void idb_free(void)
 	free(idb_tabdata);
 	free(_idb_filename);
 	_idb_filename = NULL;
+	idb_tables = NULL;
+	idb_fields = NULL;
+	idb_tabdata = NULL;
 
 	idb_tables_num = 0;
 	idb_fields_num = 0;
@@ -1275,7 +1285,7 @@ int idb_table_insert(char *table_name, int num_data, tTableDataInput *td)
 
 			DPRINTF("%s: Inserting new field '%s' to '%s', idField = %ld, idRow = %ld\n", __FUNCTION__,
 				td[i].name, table_name, idField, idRow);
-			if (_idb_table_row_field_add(idField, idRow, td[i]) > 0)
+			if (_idb_table_row_field_add(idField, idRow, td[i]) >= 0)
 				num++;
 		}
 	}
@@ -1547,11 +1557,11 @@ int _idb_tables_dump(void)
 	long i;
 
 	for (i = 0; i < idb_tables_num; i++) {
-		DPRINTF("Table #%ld:\n", i + 1);
-		DPRINTF("\tInternal ID: %ld\n", idb_tables[i].id);
-		DPRINTF("\tName: %s\n", idb_tables[i].name);
-		DPRINTF("\tNumber of fields: %d\n", _idb_get_table_field_count(idb_tables[i].id));
-		DPRINTF("\tComment: %s\n", idb_tables[i].comment ? idb_tables[i].comment : "<null>");
+		dump_printf("Table #%ld:\n", i + 1);
+		dump_printf("\tInternal ID: %ld\n", idb_tables[i].id);
+		dump_printf("\tName: %s\n", idb_tables[i].name);
+		dump_printf("\tNumber of fields: %d\n", _idb_get_table_field_count(idb_tables[i].id));
+		dump_printf("\tComment: %s\n", idb_tables[i].comment ? idb_tables[i].comment : "<null>");
 	}
 
 	return 0;
@@ -1562,12 +1572,12 @@ int _idb_fields_dump(void)
 	long i;
 
 	for (i = 0; i < idb_fields_num; i++) {
-		DPRINTF("Table field #%ld:\n", i + 1);
-		DPRINTF("\tInternal ID: %ld\n", idb_fields[i].id);
-		DPRINTF("\tFor table: %s (ID = %ld)\n", _idb_get_table_name(idb_fields[i].idTable),
+		dump_printf("Table field #%ld:\n", i + 1);
+		dump_printf("\tInternal ID: %ld\n", idb_fields[i].id);
+		dump_printf("\tFor table: %s (ID = %ld)\n", _idb_get_table_name(idb_fields[i].idTable),
 			idb_fields[i].idTable);
-		DPRINTF("\tName: %s\n", idb_fields[i].name);
-		DPRINTF("\tType: %s (code %d)\n", _idb_get_type(idb_fields[i].type),
+		dump_printf("\tName: %s\n", idb_fields[i].name);
+		dump_printf("\tType: %s (code %d)\n", _idb_get_type(idb_fields[i].type),
 			idb_fields[i].type);
 	}
 
@@ -1582,17 +1592,17 @@ int _idb_tabledata_dump(void)
 	for (i = 0; i < idb_tabdata_num; i++) {
 		fieldType = _idb_get_type_id_from_field(idb_tabdata[i].idField);
 
-		DPRINTF("Table data #%ld:\n", i + 1);
-		DPRINTF("\tInternal ID: %ld\n", idb_tabdata[i].id);
-		DPRINTF("\tInternal field ID: %ld (%s)\n", idb_tabdata[i].idField,
+		dump_printf("Table data #%ld:\n", i + 1);
+		dump_printf("\tInternal ID: %ld\n", idb_tabdata[i].id);
+		dump_printf("\tInternal field ID: %ld (%s)\n", idb_tabdata[i].idField,
 			_idb_get_type(fieldType));
-		DPRINTF("\tRow number: %ld\n", idb_tabdata[i].idRow);
+		dump_printf("\tRow number: %ld\n", idb_tabdata[i].idRow);
 
 		if (fieldType == IDB_TYPE_INT)
-			DPRINTF("\tInteger value: %d\n", idb_tabdata[i].iValue);
+			dump_printf("\tInteger value: %d\n", idb_tabdata[i].iValue);
 		else
 		if (fieldType == IDB_TYPE_LONG)
-			DPRINTF("\tLong value: %ld\n", idb_tabdata[i].lValue);
+			dump_printf("\tLong value: %ld\n", idb_tabdata[i].lValue);
 		else
 		if (fieldType == IDB_TYPE_STR) {
 			char *data = NULL;
@@ -1620,13 +1630,13 @@ int _idb_tabledata_dump(void)
 			}
 			else
 				data = strdup( idb_tabdata[i].sValue );
-			DPRINTF("\tString value: %s%s\n", data,
+			dump_printf("\tString value: %s%s\n", data,
 				(_idb_mincrypt_enabled == 1) ? " (showing decrypted value)" : "");
 			free(data);
 		}
 		else
 		if (fieldType == IDB_TYPE_FILE)
-			DPRINTF("\tFile value: %s (%ld bytes)\n", idb_tabdata[i].sValue,
+			dump_printf("\tFile value: %s (%ld bytes)\n", idb_tabdata[i].sValue,
 				get_file_size(idb_tabdata[i].sValue));
 	}
 
@@ -1635,13 +1645,13 @@ int _idb_tabledata_dump(void)
 
 void idb_dump(void)
 {
-	DPRINTF("==================================\n");
-	DPRINTF("Dumping data for internal database\n");
-	DPRINTF("==================================\n");
-	DPRINTF("Metrics:\n");
-	DPRINTF("\tTables: %d\n", idb_tables_num);
-	DPRINTF("\tFields: %d\n", idb_fields_num);
-	DPRINTF("\tData: %d\n", idb_tabdata_num);
+	dump_printf("==================================\n");
+	dump_printf("Dumping data for internal database\n");
+	dump_printf("==================================\n");
+	dump_printf("Metrics:\n");
+	dump_printf("\tTables: %d\n", idb_tables_num);
+	dump_printf("\tFields: %d\n", idb_fields_num);
+	dump_printf("\tData: %d\n", idb_tabdata_num);
 
 	_idb_tables_dump();
 	_idb_fields_dump();
@@ -1857,49 +1867,49 @@ void idb_results_dump(tTableDataSelect tds)
 	if (tds.num_rows <= 0)
 		return;
 
-	DPRINTF("=========================\n");
-	DPRINTF("Dumping select result set\n");
-	DPRINTF("=========================\n");
-	DPRINTF("Number of rows: %ld\n", tds.num_rows);
+	dump_printf("=========================\n");
+	dump_printf("Dumping select result set\n");
+	dump_printf("=========================\n");
+	dump_printf("Number of rows: %ld\n", tds.num_rows);
 
 	for (i = 0; i < tds.num_rows; i++) {
-		DPRINTF("Row #%ld:\n", i + 1);
-		DPRINTF("\tNumber of fields: %ld\n", tds.rows[i].num_fields);
+		dump_printf("Row #%ld:\n", i + 1);
+		dump_printf("\tNumber of fields: %ld\n", tds.rows[i].num_fields);
 
 		for (j = 0; j < tds.rows[i].num_fields; j++) {
-			DPRINTF("\tField '%s'\n",
+			dump_printf("\tField '%s'\n",
 				tds.rows[i].tdi[j].name);
-			DPRINTF("\t\tType: %s (%d)\n",
+			dump_printf("\t\tType: %s (%d)\n",
 				_idb_get_type(tds.rows[i].tdi[j].type),
 				tds.rows[i].tdi[j].type);
 
 			switch (tds.rows[i].tdi[j].type) {
 				case IDB_TYPE_INT:
-					DPRINTF("\t\tInteger value: %d\n",
+					dump_printf("\t\tInteger value: %d\n",
 						tds.rows[i].tdi[j].iValue);
 					break;
 				case IDB_TYPE_LONG:
-					DPRINTF("\t\tLong value: %ld\n",
+					dump_printf("\t\tLong value: %ld\n",
 						tds.rows[i].tdi[j].lValue);
 					break;
 				case IDB_TYPE_STR:
-					DPRINTF("\t\tString value: %s\n",
+					dump_printf("\t\tString value: %s\n",
 						tds.rows[i].tdi[j].sValue);
 					break;
 				case IDB_TYPE_FILE:
-					DPRINTF("\t\tFile content length: %ld\n",
+					dump_printf("\t\tFile content length: %ld\n",
 						tds.rows[i].tdi[j].cData_len);
 					break;
 				default:
-					DPRINTF("\t\tError: Invalid data type!\n");
+					dump_printf("\t\tError: Invalid data type!\n");
 					break;
 			}
 		}
 	}
 
-	DPRINTF("======================\n");
-	DPRINTF("End of result set dump\n");
-	DPRINTF("======================\n");
+	dump_printf("======================\n");
+	dump_printf("End of result set dump\n");
+	dump_printf("======================\n");
 }
 
 void idb_results_free(tTableDataSelect *tds)
@@ -2455,6 +2465,8 @@ int idb_save(char *filename)
 
 	if (filename == NULL)
 		filename = _idb_filename;
+	if (filename == NULL)
+		return -EINVAL;
 
 	DPRINTF("%s: Saving file '%s'\n", __FUNCTION__, filename);
 

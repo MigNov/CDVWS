@@ -3,3 +3,4 @@
 - Use valgrind for memcheck testing:
     valgrind -v --show-reachable=yes --leak-check=full $BINARY
 - Implement rest of the code
+- Write a better function for reading strings (cdvshell.c::get_string() cannot use tab completions and/or handle history)

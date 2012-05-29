@@ -13,6 +13,15 @@ do { fprintf(stderr, "[cdv/utils       ] " fmt , args); } while (0)
 #define DPRINTF(fmt, args...) do {} while(0)
 #endif
 
+int first_initialize(void)
+{
+	/* Initialize dump file pointer to NULL */
+	_dump_fp = NULL;
+	_shell_project_loaded = 0;
+
+	return 0;
+}
+
 int initialize(void)
 {
 	int err;
@@ -44,6 +53,16 @@ void cleanup(void)
 	#ifdef USE_INTERNAL_DB
 	idb_free();
 	#endif
+}
+
+void total_cleanup(void)
+{
+	cleanup();
+
+	if (_dump_fp != NULL) {
+		fclose(_dump_fp);
+		_dump_fp = NULL;
+	}
 }
 
 int ensure_directory_existence(char *dir)
@@ -146,69 +165,69 @@ void project_info_dump(void)
 {
 	int num = 0;
 
-	printf("\nProject hosting information dump:\n");
+	dump_printf("\nProject hosting information dump:\n");
 
 	if (project_info.host_http != NULL) {
-		printf("\tHTTP host: '%s'\n", project_info.host_http);
+		dump_printf("\tHTTP host: '%s'\n", project_info.host_http);
 		num++;
 	}
 	if (project_info.host_secure != NULL) {
-		printf("\tHTTPS host: '%s'\n", project_info.host_secure);
+		dump_printf("\tHTTPS host: '%s'\n", project_info.host_secure);
 		num++;
 	}
 	if (project_info.cert_dir != NULL) {
-		printf("\tHTTPS certificate directory: '%s'\n", project_info.cert_dir);
+		dump_printf("\tHTTPS certificate directory: '%s'\n", project_info.cert_dir);
 		num++;
 	}
 	if (project_info.cert_root != NULL) {
-		printf("\tHTTPS root certificate: '%s'\n", project_info.cert_root);
+		dump_printf("\tHTTPS root certificate: '%s'\n", project_info.cert_root);
 		num++;
 	}
 	if ((project_info.cert_pk != NULL) && (project_info.cert_pub != NULL)) {
-		printf("\tHTTPS certificates: private '%s', public '%s'\n",
+		dump_printf("\tHTTPS certificates: private '%s', public '%s'\n",
 			project_info.cert_pk, project_info.cert_pub);
 		num++;
 	}
 
-	printf("\nProject information dump:\n");
+	dump_printf("\nProject information dump:\n");
 
 	if (project_info.name != NULL) {
-		printf("\tProject name: '%s'\n", project_info.name);
+		dump_printf("\tProject name: '%s'\n", project_info.name);
 		num++;
 	}
 	if (project_info.root_dir != NULL) {
-		printf("\tProject root directory: '%s'\n", project_info.root_dir);
+		dump_printf("\tProject root directory: '%s'\n", project_info.root_dir);
 		num++;
 	}
 	if (project_info.admin_name != NULL) {
-		printf("\tProject administrator: '%s'\n", project_info.admin_name);
+		dump_printf("\tProject administrator: '%s'\n", project_info.admin_name);
 		num++;
 	}
 	if (project_info.admin_mail != NULL) {
-		printf("\tProject administrator's e-mail: '%s'\n", project_info.admin_mail);
+		dump_printf("\tProject administrator's e-mail: '%s'\n", project_info.admin_mail);
 		num++;
 	}
 	if (project_info.file_config != NULL) {
-		printf("\tProject config file: '%s'\n", project_info.file_config);
+		dump_printf("\tProject config file: '%s'\n", project_info.file_config);
 		num++;
 	}
 	if (project_info.dir_defs != NULL) {
-		printf("\tProject definitions dir: '%s'\n", project_info.dir_defs);
+		dump_printf("\tProject definitions dir: '%s'\n", project_info.dir_defs);
 		num++;
 	}
 	if (project_info.dir_views != NULL) {
-		printf("\tProject views dir: '%s'\n", project_info.dir_views);
+		dump_printf("\tProject views dir: '%s'\n", project_info.dir_views);
 		num++;
 	}
 	if (project_info.dir_files != NULL) {
-		printf("\tProject files dir: '%s'\n", project_info.dir_files);
+		dump_printf("\tProject files dir: '%s'\n", project_info.dir_files);
 		num++;
 	}
 
 	if (num == 0)
-		printf("\tNo project data available\n");
+		dump_printf("\tNo project data available\n");
 
-	printf("\n");
+	dump_printf("\n");
 }
 
 char *project_info_get(char *type)
@@ -264,6 +283,39 @@ void project_info_cleanup(void)
 
 	/* To set to NULLs */
 	project_info_init();
+}
+
+int dump_set_file(char *filename)
+{
+	unlink(filename);
+
+	_dump_fp = fopen(filename, "a");
+	return (_dump_fp == NULL) ? -EINVAL : 0;
+}
+
+void dump_unset_file(void)
+{
+	if (_dump_fp == NULL)
+		return;
+
+	fclose(_dump_fp);
+	_dump_fp = NULL;
+}
+
+void dump_printf(const char *fmt, ...)
+{
+	va_list ap;
+	char buf[4096] = { 0 };
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	fputs( buf, (_dump_fp != NULL) ? _dump_fp : stdout);
+	va_end(ap);
+}
+
+int dump_file_is_set(void)
+{
+	return (_dump_fp == NULL) ? 0 : 1;
 }
 
 long get_file_size(char *filename)

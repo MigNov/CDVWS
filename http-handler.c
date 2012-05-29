@@ -54,7 +54,7 @@ int http_host_put_file(BIO *io, int connected, char *path)
 
 	mt = get_mime_type(path);
 	fd = open(path, O_RDONLY);
-	http_host_header(io, connected, 200, mt);
+	http_host_header(io, connected, HTTP_CODE_OK, mt);
 	free(mt);
 
 	while ((len = read(fd, tmp, sizeof(tmp))) > 0)
@@ -72,7 +72,7 @@ int http_host_unknown(BIO *io, int connected, char *host)
 		"<head><title>Server unknown</title></head><body>"
 		"<h1>Server unknown</h1>We are sorry but server project "
 		"cannot be resolved.<hr />Server is running on CDV "
-		"WebServer v0.0.1</body></html>");
+		"WebServer v%s</body></html>", VERSION);
 
 	write_common(io, connected, tmp, strlen(tmp));
 	return 1;
@@ -84,11 +84,11 @@ int http_host_page_not_found(BIO *io, int connected, char *path)
 	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\nContent-Type: text/html\n\n"
 			"<html><head><title>Not Found</title><body><h1>Not Found</h1>"
 			"We are sorry but path %s you requested cannot be found.<br /><hr />"
-			"<b><u>%s</u></b> running on CDV WebServer v0.0.1. Please contact "
+			"<b><u>%s</u></b> running on CDV WebServer v%s. Please contact "
 			"site administrator <a target=\"_blank\" href=\"mailto:%s\">%s</a>."
 			"<body></html>\n",
-				path, project_info_get("name"), project_info_get("admin_mail"),
-				project_info_get("admin_name"));
+				path, VERSION, project_info_get("name"),
+				project_info_get("admin_mail"), project_info_get("admin_name"));
 
 	write_common(io, connected, tmp, strlen(tmp));
 	return 1;

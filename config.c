@@ -85,21 +85,21 @@ void config_variable_dump(char *space)
 	int i;
 
 	if (numConfigVars == 0) {
-		printf("%s: No configVar is defined for configuration space %s\n", __FUNCTION__,
+		dump_printf("%s: No configVar is defined for configuration space %s\n", __FUNCTION__,
 			(space != NULL) ? space : "<all>");
 		return;
 	}
 
-	printf("\nConfigVars dump for configuration space %s (%d):\n", (space != NULL) ? space : "<all>",
+	dump_printf("\nConfigVars dump for configuration space %s (%d):\n", (space != NULL) ? space : "<all>",
 		numConfigVars);
 	for (i = 0; i < numConfigVars; i++) {
 		if ((space == NULL) || (strstr(configVars[i].space, space) != NULL)) {
-			printf("\tConfigVar #%d:\n", i+1);
-			printf("\t\tSource:\t'%s'\n", configVars[i].filename);
+			dump_printf("\tConfigVar #%d:\n", i+1);
+			dump_printf("\t\tSource:\t'%s'\n", configVars[i].filename);
 			if (space == NULL)
-				printf("\t\tSpace:\t'%s'\n", configVars[i].space);
-			printf("\t\tKey:\t'%s' (full '%s')\n", configVars[i].key, configVars[i].fullkey);
-			printf("\t\tValue:\t'%s'\n", configVars[i].value);
+				dump_printf("\t\tSpace:\t'%s'\n", configVars[i].space);
+			dump_printf("\t\tKey:\t'%s' (full '%s')\n", configVars[i].key, configVars[i].fullkey);
+			dump_printf("\t\tValue:\t'%s'\n", configVars[i].value);
 		}
 	}
 }
