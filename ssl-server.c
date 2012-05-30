@@ -228,31 +228,31 @@ int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req)
 		sin_size = sizeof(struct sockaddr_in);
 
 		if (socket_has_data(sock, 50000)) {
-		if((s=accept(sock,(struct sockaddr *)&client_addr,&sin_size))<0)
-			return -EINVAL;
+			if((s=accept(sock,(struct sockaddr *)&client_addr,&sin_size))<0)
+				return -EINVAL;
 
-		if ((cpid = fork()) == 0) {
-			DPRINTF("%s: Accepted new %s connection from %s\n", __FUNCTION__,
-				(ctx == NULL) ? "insecure" : "secure", inet_ntoa(client_addr.sin_addr));
-			if (ctx != NULL) {
-				sbio=BIO_new_socket(s,BIO_NOCLOSE);
-				ssl=SSL_new(ctx);
-				SSL_set_bio(ssl,sbio,sbio);
+			if ((cpid = fork()) == 0) {
+				DPRINTF("%s: Accepted new %s connection from %s\n", __FUNCTION__,
+					(ctx == NULL) ? "insecure" : "secure", inet_ntoa(client_addr.sin_addr));
+				if (ctx != NULL) {
+					sbio=BIO_new_socket(s,BIO_NOCLOSE);
+					ssl=SSL_new(ctx);
+					SSL_set_bio(ssl,sbio,sbio);
 
-				SSL_accept(ssl);
+					SSL_accept(ssl);
+				}
+
+				if (process_request(ssl,s,client_addr,req) == 1) {
+					shutdown(s, SHUT_RDWR);
+					close(sock);
+					close(s);
+					return 1;
+				}
 			}
-
-			if (process_request(ssl,s,client_addr,req) == 1) {
-				shutdown(s, SHUT_RDWR);
-				close(sock);
+			else {
+				wait(NULL);
 				close(s);
-				return 1;
 			}
-		}
-		else {
-			wait(NULL);
-			close(s);
-		}
 		}
 	}
 
