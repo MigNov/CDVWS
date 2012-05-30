@@ -204,6 +204,12 @@ void shutdown_common(SSL *ssl, int s, int reason)
 	close(s);
 }
 
+void tcpsig(int sig)
+{
+	if (sig == SIGUSR1)
+		_sockets_done = 1;
+}
+
 int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req)
 {
 	int s;
@@ -213,8 +219,15 @@ int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req)
 	struct sockaddr_in client_addr;    
 	socklen_t sin_size;
 
-	while(1){
+	_sockets_done = 0;
+
+	signal(SIGUSR1, tcpsig);
+	DPRINTF("%s: Signal handler set\n", __FUNCTION__);
+
+	while (!_sockets_done) {
 		sin_size = sizeof(struct sockaddr_in);
+
+		if (socket_has_data(sock, 50000)) {
 		if((s=accept(sock,(struct sockaddr *)&client_addr,&sin_size))<0)
 			return -EINVAL;
 
@@ -240,6 +253,12 @@ int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req)
 			wait(NULL);
 			close(s);
 		}
+		}
 	}
+
+	shutdown_common(ssl, sock, SHUT_RDWR);
+	close(sock);
+
+	return 0;
 }
 

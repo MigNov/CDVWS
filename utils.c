@@ -18,6 +18,9 @@ int first_initialize(void)
 	/* Initialize dump file pointer to NULL */
 	_dump_fp = NULL;
 	_shell_project_loaded = 0;
+	_shell_history_file = NULL;
+	_pids = NULL;
+	_pids_num = 0;
 
 	return 0;
 }
@@ -71,7 +74,7 @@ struct timespec utils_get_time(int diff)
 	struct timespec res_ts;
 	struct timespec tsNull = { 0 };
 
-	clock_gettime(CLOCK_MONOTONIC, &ts);
+	clock_gettime(CLOCK_REALTIME, &ts);
 	if (diff == 1) {
 		if ((_idb_last_ts.tv_nsec == 0)
 			&& (_idb_last_ts.tv_sec == 0)) {
@@ -625,6 +628,10 @@ char *trim(char *str)
 {
         int i;
 
+	/* Null remains still null ;-) */
+	if (str == NULL)
+		return NULL;
+
 	if (DEBUG_TRIM)
 		DPRINTF("%s: Trimming string '%s'\n", __FUNCTION__, str);
 
@@ -738,5 +745,71 @@ char *process_handlers(char *path)
 
 	DPRINTF("%s: No handler found for '%s'\n", __FUNCTION__, path);
         return NULL;
+}
+
+/* PID functions */
+void utils_pid_add(int pid)
+{
+	if (_pids == NULL) {
+		_pids = (int *)malloc( sizeof(int) );
+		_pids_num = 0;
+	}
+	else
+		_pids = (int *)realloc( _pids, (_pids_num + 1) * sizeof(int) );
+
+	_pids[ _pids_num ] = pid;
+	_pids_num++;
+}
+
+void utils_pid_dump(void)
+{
+	int i;
+
+	if (_pids == NULL)
+		return;
+
+	for (i = 0; i < _pids_num; i++) {
+		dump_printf("PID #%d: %d\n", i + 1, _pids[i]);
+	}
+}
+
+int utils_pid_signal_all(int sig)
+{
+	int i;
+
+	if (_pids == NULL)
+		return 0;
+
+	for (i = 0; i < _pids_num; i++) {
+		DPRINTF("%s: Sending signal %d to PID %d\n",
+			__FUNCTION__, sig, _pids[i]);
+		kill(_pids[i], sig);
+	}
+
+	return _pids_num;
+
+}
+
+int utils_pid_wait_all(void)
+{
+	int i, new, old;
+
+	if (_pids == NULL)
+		return 0;
+
+	new = _pids_num;
+	old = new;
+	for (i = 0; i < new; i++) {
+		waitpid( _pids[i], NULL, 0 );
+		new--;
+	}
+	_pids_num = 0;
+
+	return old;
+}
+
+int utils_pid_kill_all(void)
+{
+	return utils_pid_signal_all(SIGKILL);
 }
 

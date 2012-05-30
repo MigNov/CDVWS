@@ -64,6 +64,7 @@ unsigned char *mincrypt_base64_decode(const char *in, size_t *size);
 typedef int (tProcessRequest)(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len);
 
 SSL_CTX *init_ssl_layer(char *private_key, char *public_key, char *root_key);
+int _sockets_done;
 int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req);
 int _tcp_in_progress;
 char _tcp_buf[TCP_BUF_SIZE];
@@ -90,6 +91,9 @@ typedef struct tTokenizer {
 
 tTokenizer tokenize(char *string, char *by);
 void free_tokens(tTokenizer t);
+
+int *_pids;
+int _pids_num;
 
 typedef struct tConfigVariable {
 	char *filename;
@@ -139,10 +143,14 @@ FILE *_dump_fp;
 
 char *trim(char *str);
 int ensure_directory_existence(char *dir);
-float get_time_float_ms(struct timespec ts, struct timespec te);
+float get_time_float_us(struct timespec ts, struct timespec te);
+char *_shell_history_file;
 
 #define TIME_CURRENT	0
 #define TIME_DIFF	1
+
+#define READLINE_HISTORY_FILE_CDV	"~/.cdv_history"
+#define READLINE_HISTORY_FILE_IDB	"~/.cdv_idb_history"
 
 #define timespecsub(a, b, result)					\
 	do {								\
@@ -328,6 +336,11 @@ void dump_printf(const char *fmt, ...);
 int dump_file_is_set(void);
 void dump_unset_file(void);
 struct timespec utils_get_time(int diff);
+void utils_pid_add(int pid);
+void utils_pid_dump(void);
+int utils_pid_kill_all(void);
+int utils_pid_wait_all(void);
+int utils_pid_signal_all(int sig);
 
 /* Project related options */
 void project_info_init(void);
@@ -367,8 +380,8 @@ int wrap_mincrypt_set_password(char *salt, char *password);
 unsigned char *wrap_mincrypt_encrypt(unsigned char *block, size_t size, int id, size_t *new_size);
 unsigned char *wrap_mincrypt_decrypt(unsigned char *block, size_t size, int id, size_t *new_size, int *read_size);
 int wrap_mincrypt_set_encoding_type(int type);
-unsigned char *wrap_mincrypt_base64_encode(const char *in, size_t *size);
-unsigned char *wrap_mincrypt_base64_decode(const char *in, size_t *size);
+unsigned char *wrap_mincrypt_base64_encode(unsigned char *in, size_t *size);
+unsigned char *wrap_mincrypt_base64_decode(unsigned char *in, size_t *size);
 void wrap_mincrypt_cleanup(void);
 
 /* Shell functions */

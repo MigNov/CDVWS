@@ -122,6 +122,9 @@ int idb_query(char *query)
 		log = 1;
 	}
 
+	if ((query != NULL) && (strlen(query) > 0) && (query[strlen(query) - 1] == ';'))
+		query[strlen(query) - 1] = 0;
+
 	DPRINTF("%s: Processing '%s'\n", __FUNCTION__, query);
 	idb_get_time( TIME_CURRENT );
 
@@ -612,6 +615,8 @@ int idb_query(char *query)
 		_last_tds = idb_table_select(name, num_fields, aFields, num_where_fields, where_fields);
 		ret = (_last_tds.num_rows == 0) ? -ENOENT : 0;
 		free_tokens(t);
+
+		idb_results_dump( _last_tds );
 
 		for (i = 0; i < t2.numTokens; i++)
 			free(aFields[i]);
@@ -1250,7 +1255,8 @@ int idb_table_insert(char *table_name, int num_data, tTableDataInput *td)
 						strlen(td[i].sValue), idRow, &nl);
 
 				if (tmp != NULL) {
-					char *tmp2 = (char *)wrap_mincrypt_base64_encode((char *)tmp, &nl);
+					char *tmp2 = (char *)wrap_mincrypt_base64_encode((unsigned char *)tmp,
+							&nl);
 
 					if (tmp2 != NULL) {
 						free(td[i].sValue);
@@ -1304,20 +1310,21 @@ int _idb_row_fields_match(char *table, long idRow, int num_fields, tTableDataInp
 									}
 									else {
 										char *tmp = NULL;
-										char *tmp2 = NULL;
+										unsigned char *tmp2 = NULL;
 										size_t len = strlen(idb_tabdata[j].sValue);
-										size_t rsize = -1;
+										int rsize = -1;
 
-										tmp = wrap_mincrypt_base64_decode((unsigned char *)
+										tmp = (char *)wrap_mincrypt_base64_decode((unsigned char *)
 											idb_tabdata[j].sValue, &len);
 
 										if (tmp != NULL) {
-											tmp2 = wrap_mincrypt_decrypt((char *)tmp, len,
+											tmp2 = wrap_mincrypt_decrypt((unsigned char *)tmp, len,
 												idb_tabdata[j].idRow,
 												&len, &rsize);
 											if (tmp2 != NULL) {
 												tmp2[len] = 0;
-												ret += (strcmp(fields[i].sValue, tmp2) == 0);
+												ret += (strcmp(fields[i].sValue,
+														(char *)tmp2) == 0);
 												free(tmp2);
 											}
 										}
@@ -1403,7 +1410,8 @@ int idb_table_update(char *table_name, int num_fields, tTableDataInput *td, int 
 										idRow, &nl);
 
 									if (tmp != NULL) {
-										char *tmp2 = wrap_mincrypt_base64_encode(tmp, &nl);
+										char *tmp2 = (char *)
+											wrap_mincrypt_base64_encode(tmp, &nl);
 
 										if (tmp2 != NULL) {
 											free(td[i].sValue);
@@ -1588,16 +1596,16 @@ int _idb_tabledata_dump(void)
 			char *data = NULL;
 			/* Provide valid data dump even if using encryption */
 			if (_idb_mincrypt_enabled == 1) {
-				char *tmp = NULL;
 				char *tmp2 = NULL;
+				unsigned char *tmp = NULL;
 				size_t len = strlen(idb_tabdata[i].sValue);
-				size_t rsize = -1;
+				int rsize = -1;
 
 				tmp = wrap_mincrypt_base64_decode((unsigned char *)
 					idb_tabdata[i].sValue, &len);
 
 				if (tmp != NULL) {
-					tmp2 = wrap_mincrypt_decrypt(tmp, len,
+					tmp2 = (char *)wrap_mincrypt_decrypt(tmp, len,
 						idb_tabdata[i].idRow,
 						&len, &rsize);
 					if (tmp2 != NULL) {
@@ -1780,6 +1788,12 @@ tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, in
 				TDS_LAST_ROW(row_idx).type =  _idb_get_type_id_from_field(
 								idb_tabdata[j].idField );
 
+				TDS_LAST_ROW(row_idx).iValue = 0;
+				TDS_LAST_ROW(row_idx).lValue = 0;
+				TDS_LAST_ROW(row_idx).sValue = 0;
+				TDS_LAST_ROW(row_idx).cData  = NULL;
+				TDS_LAST_ROW(row_idx).cData_len = 0;
+
 				switch (TDS_LAST_ROW(row_idx).type) {
 					case IDB_TYPE_INT:
 						TDS_LAST_ROW(row_idx).iValue = idb_tabdata[j].iValue;
@@ -1793,15 +1807,15 @@ tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, in
 						break;
 					case IDB_TYPE_STR:
 						if (_idb_mincrypt_enabled == 1) {
+							unsigned char *tmp2 = NULL;
 							char *tmp = NULL;
-							char *tmp2 = NULL;
 							size_t len = strlen(idb_tabdata[j].sValue);
-							size_t rsize = -1;
+							int rsize = -1;
 
-							tmp = wrap_mincrypt_base64_decode((unsigned char *)
+							tmp = (char *)wrap_mincrypt_base64_decode((unsigned char *)
 								idb_tabdata[j].sValue, &len);
 							if (tmp != NULL) {
-								tmp2 = wrap_mincrypt_decrypt(tmp, len,
+								tmp2 = wrap_mincrypt_decrypt((unsigned char *)tmp, len,
 									idb_tabdata[j].idRow,
 									&len, &rsize);
 
@@ -1809,7 +1823,8 @@ tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, in
 									tmp2[len] = 0;
 
 									free(idb_tabdata[j].sValue);
-									idb_tabdata[j].sValue = strdup( tmp2 );
+									idb_tabdata[j].sValue = strdup(
+										(char *)tmp2 );
 
 									free(tmp2);
 								}

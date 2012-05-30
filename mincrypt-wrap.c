@@ -37,14 +37,14 @@ int wrap_mincrypt_set_encoding_type(int type)
 	return mincrypt_set_encoding_type(type);
 }
 
-unsigned char *wrap_mincrypt_base64_encode(const char *in, size_t *size)
+unsigned char *wrap_mincrypt_base64_encode(unsigned char *in, size_t *size)
 {
-	return mincrypt_base64_encode(in, size);
+	return mincrypt_base64_encode((const char *)in, size);
 }
 
-unsigned char *wrap_mincrypt_base64_decode(const char *in, size_t *size)
+unsigned char *wrap_mincrypt_base64_decode(unsigned char *in, size_t *size)
 {
-	return mincrypt_base64_decode(in, size);
+	return mincrypt_base64_decode((const char *)in, size);
 }
 
 void wrap_mincrypt_cleanup(void)
@@ -58,7 +58,7 @@ unsigned char *wrap_mincrypt_encrypt(unsigned char *block, size_t size, int id, 
 unsigned char *wrap_mincrypt_decrypt(unsigned char *block, size_t size, int id, size_t *new_size, int *read_size)
 	{ return NULL; }
 int wrap_mincrypt_set_encoding_type(int type) { return -1; }
-unsigned char *wrap_mincrypt_base64_encode(const char *in, size_t *size) { return NULL; }
-unsigned char *wrap_mincrypt_base64_decode(const char *in, size_t *size) { return NULL; }
+unsigned char *wrap_mincrypt_base64_encode(unsigned char *in, size_t *size) { return NULL; }
+unsigned char *wrap_mincrypt_base64_decode(unsigned char *in, size_t *size) { return NULL; }
 void wrap_mincrypt_cleanup(void) {};
 #endif

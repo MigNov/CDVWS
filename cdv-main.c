@@ -199,9 +199,16 @@ void run_servers(int port, int ssl_port)
 			"certs/server-key.pub", "certs/rootcert.pem");
 }
 
+void atex(void)
+{
+	total_cleanup();
+}
+
 int main(int argc, char *argv[])
 {
 	int i;
+
+	atexit( atex );
 
 	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0))
 		return run_shell();

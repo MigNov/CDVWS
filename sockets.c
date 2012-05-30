@@ -68,54 +68,108 @@ int socket_has_data(int sfd, long maxtime)
 	return (rc == 1);
 }
 
+void socksig(int sig)
+{
+	DPRINTF("%s: Signal %d caught\n", __FUNCTION__, sig);
+
+	if (sig == SIGUSR1) {
+		utils_pid_signal_all(SIGUSR1);
+		utils_pid_wait_all();
+	}
+}
+
 int run_server(int port, char *pk, char *pub, char *root_key)
 {
-	if ((port < 0) || (port > 65535))
+	if ((port < 1) || (port > 65535))
 		return -EINVAL;
+
+	signal(SIGUSR1, socksig);
 
 	/* Applicable only for PK and PUB set, i.e. SSL connection */
 	if ((pk != NULL) && (pub != NULL) && (root_key != NULL)) {
+		int fd[2];
+		char buf[16] = { 0 };
+
+		pipe(fd);
 		if (fork() == 0) {
 			int sock;
 			SSL_CTX *ctx = NULL;
 
+			close(fd[0]);
+			snprintf(buf, sizeof(buf), "%d", getpid());
+			write(fd[1], buf, strlen(buf));
+
 			DPRINTF("%s: Opening SSL server on port %d\n",
 				__FUNCTION__, port);
 			ctx = init_ssl_layer(pk, pub, root_key);
-			if ((sock = tcp_listen(port)) == -1)
+			if ((sock = tcp_listen(port)) == -1) {
+				write(fd[1], "ERR", 3);
+				close(fd[1]);
 				_exit(1);
+			}
 
 			accept_loop(ctx, sock, process_request_common);
 			SSL_CTX_free(ctx);
 			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			close(fd[1]);
 			close(sock);
 			exit(0);
 		}
-		else
-			wait(NULL);
 
-		wait(NULL);
+		/* Try to wait to spawn server, if it fails we will know */
+		usleep(50000);
+
+		close(fd[1]);
+		read(fd[0], buf, sizeof(buf));
+		close(fd[0]);
+		if (strstr(buf, "ERR") == NULL)
+			utils_pid_add( atoi(buf) );
+		else
+			waitpid( atoi(buf), NULL, 0 );
+
+		utils_pid_wait_all();
 	}
 
 	/* Applicable only for PK and PUB unset, i.e. non-SSL connection */
 	if (port > 0) {
+		int fd[2];
+		char buf[16] = { 0 };
+
+		pipe(fd);
 		if (fork() == 0) {
 			int sock;
 
+			close(fd[0]);
+			snprintf(buf, sizeof(buf), "%d", getpid());
+			write(fd[1], buf, strlen(buf));
+
 			DPRINTF("%s: Opening server on port %d\n", __FUNCTION__, port);
-			if ((sock = tcp_listen(port)) == -1)
+			if ((sock = tcp_listen(port)) == -1) {
+				write(fd[1], "ERR", 3);
+				close(fd[1]);
 				_exit(1);
+			}
 
 			accept_loop(NULL, sock, process_request_common);
 
 			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			close(fd[1]);
 			close(sock);
 			exit(0);
 		}
-		else
-			wait(NULL);
 
-		wait(NULL);
+		/* Try to wait to spawn server, if it fails we will know */
+		usleep(50000);
+
+		close(fd[1]);
+		read(fd[0], buf, sizeof(buf));
+		close(fd[0]);
+		if (strstr(buf, "ERR") == NULL)
+			utils_pid_add( atoi(buf) );
+		else
+			waitpid( atoi(buf), NULL, 0 );
+
+		utils_pid_wait_all();
 	}
 
 	return 0;

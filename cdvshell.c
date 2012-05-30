@@ -10,15 +10,76 @@ do {} while(0)
 #endif
 
 #ifdef USE_READLINE
-char *get_string(char *prompt)
+void readline_init(char *filename)
+{
+	int ret;
+	char *fn = NULL;
+
+	using_history();
+
+	if ((filename != NULL) && (filename[0] == '~')) {
+		char buf[BUFSIZE] = { 0 };
+		char *hd = NULL;
+
+		strcat(buf, filename + 1);
+		if ((hd = getenv("HOME")) != NULL) {
+			snprintf(buf, sizeof(buf), "%s%s", hd,
+				filename + 1);
+
+			fn = strdup( buf );
+		}
+	}
+
+	if ((filename != NULL) && (fn == NULL))
+		fn = strdup( filename );
+
+	if ((history_length > 0)
+		&& (_shell_history_file != NULL)) {
+		ret = write_history( _shell_history_file );
+		DPRINTF("%s: Writing history to %s returned code %d\n",
+			__FUNCTION__, _shell_history_file, ret);
+	}
+
+	if (filename == NULL) {
+		DPRINTF("%s: Freeing history file\n",
+			__FUNCTION__);
+		free( _shell_history_file );
+		_shell_history_file = NULL;
+		return;
+	}
+
+	clear_history();
+	ret = read_history(fn);
+	DPRINTF("%s: Reading history from %s returned code %d\n",
+		__FUNCTION__, filename, ret);
+
+	_shell_history_file = strdup( fn );
+	free(fn);
+}
+
+void readline_set_max(int max)
+{
+	stifle_history(max);
+}
+
+void readline_close(void)
+{
+	readline_init(NULL);
+}
+
+char *readline_read(char *prompt)
 {
 	char *tmp = readline(prompt);
 
 	add_history(tmp);
-	return tmp;
+	return trim(tmp);
 }
 #else
-char *get_string(char *prompt)
+void readline_init(char *filename) { };
+void readline_close(void) { };
+void readline_set_max(int max) { };
+
+char *readline_read(char *prompt)
 {
 	int c;
 	char a[2] = { 0 };
@@ -30,7 +91,7 @@ char *get_string(char *prompt)
 		strcat(buf, a);
 	}
 
-	return strdup( buf );
+	return trim(buf);
 }
 #endif
 
@@ -40,9 +101,11 @@ int idb_shell(void)
 	struct timespec ts = utils_get_time( TIME_CURRENT );
 	struct timespec tse;
 
+	readline_init(READLINE_HISTORY_FILE_IDB);
+
 	printf("\nCDV WebServer v%s internal database (iDB) shell\n", VERSION);
 	while (1) {
-		char *str = get_string("idb> ");
+		char *str = readline_read("idb> ");
 
 		if (str == NULL)
 			return -EIO;
@@ -80,6 +143,7 @@ int idb_shell(void)
 				"DUMP\t\t\t- dump all data\n\n"
 				"Other commands:\n\n"
 				"pwd\t\t\t- print current working directory\n"
+				"time\t\t\t- get current and IDB session time\n"
 				"quit\t\t\t- end IDB session\n"
 				"\n");
 		}
@@ -91,11 +155,67 @@ int idb_shell(void)
 			puts(buf);
 		}
 		else
+		if (strcmp(str, "time") == 0) {
+			char tmp[1024] = { 0 };
+
+			tse = utils_get_time( TIME_CURRENT );
+			fTm = get_time_float_us( tse, ts );
+
+			strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
+			printf("Current date/time is %s, current session time is %.3f s (%.3f min, %.3f hod)\n",
+				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+		}
+		else
+		if ((strncmp(str, "run", 3) == 0) || (strncmp(str, "\\.", 2) == 0)) {
+			tTokenizer t = tokenize(str, " ");
+
+			if (t.numTokens == 2) {
+				if (access(t.tokens[1], R_OK) == 0) {
+					FILE *fp = NULL;
+					char buf[BUFSIZE];
+
+					fp = fopen(t.tokens[1], "r");
+					if (fp != NULL) {
+						int num = 0;
+
+						while (!feof(fp)) {
+							memset(buf, 0, sizeof(buf));
+
+							fgets(buf, sizeof(buf), fp);
+							if ((strlen(buf) > 0)
+								&& (buf[strlen(buf) - 1] == '\n'))
+								buf[strlen(buf) - 1] = 0;
+
+							if (strlen(buf) > 0) {
+								num++;
+								int ret = idb_query(buf);
+								printf("Query '%s' returned with code %d\n",
+									buf, ret);
+							}
+						}
+
+						printf("%d queries processed\n", num);
+
+						fclose(fp);
+					}
+					else
+						printf("Error: Cannot open file %s for reading\n",
+							t.tokens[1]);
+				}
+				else
+					printf("Error: Cannot access file %s\n", t.tokens[1]);
+			}
+			else
+				printf("Syntax:\t1. run <filename>\n\t2. \\.  <filename>\n");
+
+			free_tokens(t);
+		}
+		else
 		if (strlen(str) > 0) {
 			int ret = idb_query(str);
 			if ((strcmp(str, "COMMIT") == 0) && (ret == -EINVAL)) {
 				/* File name is missing, ask for new file name */
-				char *tmp = get_string("File name is not set. Please enter name of file to "
+				char *tmp = readline_read("File name is not set. Please enter name of file to "
 						"write database to.\nFile name: ");
 				char tmp2[4096] = { 0 };
 
@@ -113,6 +233,8 @@ int idb_shell(void)
 
 			printf("Query '%s' returned with error code %d\n", str, ret);
 		}
+
+		free(str);
 	}
 
 	idb_free();
@@ -120,9 +242,10 @@ int idb_shell(void)
 
 	tse = utils_get_time( TIME_CURRENT );
 	fTm = get_time_float_us( tse, ts );
-	DPRINTF("%s: IDB Shell session time is %.3f s\n", __FUNCTION__,
-		fTm / 1000000);
+	DPRINTF("%s: IDB Shell session time is %.3f s (%.3f min, %.3f hod)\n", __FUNCTION__,
+		fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
 
+	readline_close();
 	return 0;
 }
 
@@ -134,9 +257,11 @@ int run_shell(void)
 
 	first_initialize();
 
+	readline_init(READLINE_HISTORY_FILE_CDV);
+
 	printf("\nCDV WebServer v%s shell\n", VERSION);
 	while (1) {
-		char *str = get_string("(cdv) ");
+		char *str = readline_read("(cdv) ");
 
 		if (str == NULL)
 			return -EIO;
@@ -212,6 +337,18 @@ int run_shell(void)
 						printf("Dump file set to %s\n", t.tokens[2]);
 				}
 			}
+			else
+			if (strcmp(t.tokens[1], "history-limit") == 0) {
+				if (t.numTokens == 3) {
+					int limit = atoi(t.tokens[2]);
+					if (limit > 0) {
+						readline_set_max( limit );
+						printf("History limit set to %d\n", limit);
+					}
+					else
+						printf("Syntax: set history-limit <max>\n");
+				}
+			}
 
 			free_tokens(t);
 		}
@@ -225,10 +362,97 @@ int run_shell(void)
 			printf("CDV shell help:\n\nload_project <filename>\t- load project file <filename> into memory\n"
 				"dump [<space>]\t\t- dump configuration data, see \"dump help\" for more information\n"
 				"set dumplog <filename>\t- set file for dump data (or '-' to write back to stdout)\n"
+				"set history-limit <max>\t- set history limit to <max> entries\n"
 				"version\t\t\t- get version information\n"
 				"pwd\t\t\t- print current working directory\n"
+				"time\t\t\t- get current and session time\n"
 				"idbshell\t\t- go into IDB shell\n"
+				"p <object>\t\t- print object information\n"
+				"print <object>\t\t- another way to print object information\n"
 				"\n");
+		}
+		else
+		if ((strncmp(str, "p ", 2) == 0) || (strncmp(str, "print", 5) == 0)) {
+			tTokenizer t = tokenize(str, " ");
+			if (t.numTokens < 2) {
+				printf("Syntax:\tp <object>\n\tprint <object>\n");
+			}
+			else {
+				tTokenizer t2 = tokenize(t.tokens[1], ".");
+				if (t2.numTokens < 2)
+					printf("Error: Invalid object for inspection\n");
+				else {
+					int i, found = 0;
+					char *cfg = NULL;
+					char tmp[512] = { 0 };
+
+					for (i = 1; i < t2.numTokens; i++) {
+						strcat(tmp, t2.tokens[i]);
+
+						if (i < t2.numTokens - 1)
+							strcat(tmp, ".");
+					}
+
+					if ((cfg = config_get(t2.tokens[0], tmp)) != NULL) {
+						printf("Configuration variable %s value is: %s\n",
+							t.tokens[1], cfg);
+
+						found = 1;
+					}
+
+					free(cfg);
+
+					if (found == 0)
+						printf("No object %s found\n", t.tokens[1]);
+				}
+				free_tokens(t2);
+			}
+			free_tokens(t);
+		}
+		else
+		if (strncmp(str, "server", 6) == 0) {
+			tTokenizer t = tokenize(str, " ");
+			if (t.numTokens < 2)
+				printf("Syntax: server <port>\n");
+			else {
+				int fd[2];
+				char buf[128] = { 0 };
+
+				pipe(fd);
+				if (fork() == 0) {
+					snprintf(buf, sizeof(buf), "%d", (int)getpid());
+					close(fd[0]);
+					write(fd[1], buf, strlen(buf));
+					if (run_server( atoi(t.tokens[1]), NULL, NULL, NULL) != 0)
+						printf("Error: Cannot run server on port %s\n",
+							t.tokens[1]);
+
+					write(fd[1], "ERR", 3);
+
+					exit(0);
+				}
+
+				/* Try to wait to spawn server, if it fails we will know */
+				usleep(50000);
+
+				close(fd[1]);
+				read(fd[0], buf, sizeof(buf));
+				if (strstr(buf, "ERR") == NULL)
+					utils_pid_add( atoi(buf) );
+				else
+					waitpid( atoi(buf), NULL, 0 );
+			}
+			free_tokens(t);
+		}
+		else
+		if (strcmp(str, "killserver") == 0) {
+			int ret;
+
+			ret = utils_pid_signal_all(SIGUSR1);
+			printf("Signal sent to %d process(es). Waiting for termination\n",
+				ret);
+			ret = utils_pid_wait_all();
+			printf("%d process(es) terminated\n", ret);
 		}
 		else
 		if (strcmp(str, "pwd") == 0) {
@@ -238,11 +462,27 @@ int run_shell(void)
 			puts(buf);
 		}
 		else
-		if (strcmp(str, "idbshell") == 0)
+		if (strcmp(str, "idbshell") == 0) {
 			idb_shell();
+
+			readline_init(READLINE_HISTORY_FILE_CDV);
+		}
+		else
+		if (strcmp(str, "time") == 0) {
+			char tmp[1024] = { 0 };
+
+			tse = utils_get_time( TIME_CURRENT );
+			fTm = get_time_float_us( tse, ts );
+
+			strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
+			printf("Current date/time is %s, current session time is %.3f s (%.3f min, %.3f hod)\n",
+				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+		}
 		else
 		if (strlen(str) > 0)
 			printf("Error: Unknown command '%s'\n", str);
+
+		free(str);
 	}
 
 	if (_shell_project_loaded == 1) {
@@ -250,10 +490,16 @@ int run_shell(void)
 		total_cleanup();
 	}
 
+	readline_close();
+
 	tse = utils_get_time( TIME_CURRENT );
 	fTm = get_time_float_us( tse, ts );
-	DPRINTF("%s: Shell session time is %.3f s\n", __FUNCTION__,
-		fTm / 1000000);
+
+	utils_pid_signal_all(SIGUSR1);
+	utils_pid_wait_all();
+
+	DPRINTF("%s: Shell session time is %.3f s (%.3f min, %.3f hod)\n", __FUNCTION__,
+		fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
 
 	return 0;
 }
