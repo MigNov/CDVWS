@@ -29,6 +29,7 @@ int initialize(void)
 {
 	int err;
 
+	xml_init();
 	project_info_init();
 	if ((err = config_initialize()) != 0)
 		return -err;
@@ -52,6 +53,7 @@ void cleanup(void)
 	project_info_cleanup();
 	definitions_cleanup();
 	config_free();
+	xml_cleanup();
 
 	#ifdef USE_INTERNAL_DB
 	idb_free();

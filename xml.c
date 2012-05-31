@@ -186,11 +186,11 @@ void xml_dump(void) {
 	int i;
 
 	for (i = 0; i < xml_numAttr; i++) {
-		DPRINTF("Attribute #%d:\n", i + 1);
-		DPRINTF("\tFilename: %s\n", xattr[i].filename);
-		DPRINTF("\tNode: %s\n", xattr[i].node);
-		DPRINTF("\tName: %s\n", xattr[i].name);
-		DPRINTF("\tValue: %s\n", xattr[i].value);
+		dump_printf("Attribute #%d:\n", i + 1);
+		dump_printf("\tFilename: %s\n", xattr[i].filename);
+		dump_printf("\tNode: %s\n", xattr[i].node);
+		dump_printf("\tName: %s\n", xattr[i].name);
+		dump_printf("\tValue: %s\n", xattr[i].value);
 	}
 }
 

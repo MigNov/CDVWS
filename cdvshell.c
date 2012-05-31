@@ -272,23 +272,51 @@ int run_shell(void)
 			|| (strcmp(str, "quit") == 0))
 				break;
 
-		if (strncmp(str, "load_project ", 13) == 0) {
-			if (access(str + 13, R_OK) != 0) {
-				printf("Error: Cannot read project file '%s'\n", str + 13);
+		if (strncmp(str, "load", 4) == 0) {
+			tTokenizer t = tokenize(str, " ");
+
+			if (t.numTokens < 3) {
+				if ((t.numTokens == 2) && (strcmp(t.tokens[1], "help") == 0))
+					printf("Load command help:\n\n"
+						"load xml <filename>\t- load XML file <filename> into memory\n"
+						"load project <filename>\t- load project file <filename> into memory\n"
+						"\n");
+				else
+					printf("Syntax: load <type> <filename>\n");
 			}
 			else {
-				int ret = load_project( str + 13 );
+				if (access(t.tokens[2], R_OK) != 0)
+					printf("Error: Cannot open file '%s'\n", t.tokens[2]);
+				else {
+					if (strcmp(t.tokens[1], "xml") == 0) {
+						int ret = xml_load(t.tokens[2]);
 
-				if (ret == 0) {
-					DPRINTF("%s: Project file '%s' has been loaded successfully\n",
-						__FUNCTION__, str + 13);
-					_shell_project_loaded = 1;
-					printf("Project file '%s' loaded successfully\n", str + 13);
+						if (ret == 0) {
+							printf("XML file %s loaded successfully\n", t.tokens[2]);
+						}
+						else
+							printf("Error: Cannot load XML file %s\n", t.tokens[2]);
+					}
+					else
+					if (strcmp(t.tokens[1], "project") == 0) {
+						int ret = load_project(t.tokens[2]);
+
+						if (ret == 0) {
+							DPRINTF("%s: Project file '%s' has been loaded successfully\n",
+								__FUNCTION__, t.tokens[2]);
+							_shell_project_loaded = 1;
+							printf("Project file '%s' loaded successfully\n", t.tokens[2]);
+						}
+						else
+							printf("Error: Project file '%s' load failed with error code %d\n",
+								t.tokens[2], ret);
+					}
+					else
+						printf("Error: Invalid load type\n");
 				}
-				else
-					printf("Error: Project file '%s' load failed with error code %d\n",
-						str + 13, ret);
 			}
+
+			free_tokens(t);
 		}
 		else
 		if (strncmp(str, "dump", 4) == 0) {
@@ -311,9 +339,13 @@ int run_shell(void)
 				if (strcmp(t.tokens[1], "pids") == 0)
 					utils_pid_dump();
 				else
+				if (strcmp(t.tokens[1], "xml") == 0)
+					xml_dump();
+				else
 				if (strcmp(t.tokens[1], "help") == 0)
 					printf("Dump command help:\n\n"
 						"dump\t\t- dump both info and configuration\n"
+						"dump xml\t- dump XML information\n"
 						"dump info\t- dump project information only\n"
 						"dump config\t- dump project configuration only\n\n"
 						"Internal shell options:\n\n"
@@ -381,7 +413,7 @@ int run_shell(void)
 				"p <object>\t\t\t\t\t\t- print object information\n"
 				"print <object>\t\t\t\t\t\t- another way to print object information\n"
 				"dump [<space>]\t\t\t\t\t\t- dump configuration data, see \"dump help\" for more information\n"
-				"load_project <filename>\t\t\t\t\t- load project file <filename> into memory\n\n"
+				"load <type> <filename>\t\t\t\t\t- load file into memory, see \"load help\" for more information\n\n"
 				"Other functions:\n\n"
 				"pwd\t\t\t\t\t\t\t- print current working directory\n"
 				"time\t\t\t\t\t\t\t- get current and session time\n"
