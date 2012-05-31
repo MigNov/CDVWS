@@ -698,6 +698,9 @@ char *get_mime_type_cmd(char *path)
 	FILE *fp = NULL;
 	char tmp[4096] = { 0 };
 
+	if (access(path, R_OK) != 0)
+		return NULL;
+
 	snprintf(tmp, sizeof(tmp), "file --mime-type -b %s", path);
 	fp = popen(tmp, "r");
 	memset(tmp, 0, sizeof(tmp));
