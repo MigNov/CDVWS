@@ -653,7 +653,47 @@ char *trim(char *str)
         return strdup(str);
 }
 
-char *get_mime_type(char *path)
+char *get_mime_type_match(char *path)
+{
+	int i;
+	FILE *fp = NULL;
+	char tmp[4096] = { 0 };
+	char *ret = NULL;
+	char *ext = NULL;
+
+	fp = fopen("/etc/mime.types", "r");
+	if (fp == NULL)
+		return NULL;
+
+	ext = strstr(path, ".");
+	if (ext == NULL)
+		return NULL;
+
+	ext++;
+	while (!feof(fp)) {
+		memset(tmp, 0, sizeof(tmp));
+		fgets(tmp, sizeof(tmp), fp);
+
+		if (strlen(tmp) > 0) {
+			if (tmp[strlen(tmp) - 1] == '\n')
+				tmp[strlen(tmp) - 1] = 0;
+
+			tTokenizer t = tokenize(tmp, "\t");
+			for (i = 0; i < t.numTokens; i++) {
+				if (strcmp(t.tokens[i], ext) == 0) {
+					ret = strdup( t.tokens[0] );
+					break;
+				}
+			}
+			free_tokens(t);
+		}
+	}
+
+	fclose(fp);
+	return ret;
+}
+
+char *get_mime_type_cmd(char *path)
 {
 	FILE *fp = NULL;
 	char tmp[4096] = { 0 };
@@ -668,6 +708,17 @@ char *get_mime_type(char *path)
 		tmp[strlen(tmp) - 1] = 0;
 
 	return strdup( tmp );
+}
+
+char *get_mime_type(char *path)
+{
+	char *ret = NULL;
+
+	ret = get_mime_type_match(path);
+	if (ret == NULL)
+		ret = get_mime_type_cmd(path);
+
+	return ret;
 }
 
 char *process_read_handler(char *filename)

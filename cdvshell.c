@@ -373,6 +373,7 @@ int run_shell(void)
 				"pwd\t\t\t\t\t\t\t- print current working directory\n"
 				"time\t\t\t\t\t\t\t- get current and session time\n"
 				"idbshell\t\t\t\t\t\t- go into IDB shell\n"
+				"get-mime <filename>\t\t\t\t\t- get mime type for <filename>\n"
 				"server <port>\t\t\t\t\t\t- start a HTTP server on port <port>\n"
 				"ssl-server <port> <private-key> <public-key> <root-key>\t- start a HTTPS server on port <port>\n"
 				"kill-servers\t\t\t\t\t\t- kill all HTTP/HTTPS servers\n"
@@ -521,6 +522,25 @@ int run_shell(void)
 			strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
 			printf("Current date/time is %s, current session time is %.3f s (%.3f min, %.3f hod)\n",
 				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+		}
+		else
+		if (strncmp(str, "get-mime", 8) == 0) {
+			tTokenizer t = tokenize(str, " ");
+
+			if (t.numTokens == 2) {
+				char *tmp = NULL;
+
+				if ((tmp = get_mime_type(t.tokens[1])) == NULL)
+					printf("Error: Cannot get mime type for %s\n", t.tokens[1]);
+				else
+					printf("Mime type for %s is %s\n", t.tokens[1], tmp);
+
+				free(tmp);
+			}
+			else
+				printf("Syntax: get-mime <filename>\n");
+
+			free_tokens(t);
 		}
 		else
 		if (strlen(str) > 0)
