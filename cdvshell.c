@@ -74,10 +74,37 @@ char *readline_read(char *prompt)
 	add_history(tmp);
 	return trim(tmp);
 }
+
+void readline_unlink(char *filename)
+{
+	char *fn = NULL;
+
+	clear_history();
+	if ((filename != NULL) && (filename[0] == '~')) {
+		char buf[BUFSIZE] = { 0 };
+		char *hd = NULL;
+
+		strcat(buf, filename + 1);
+		if ((hd = getenv("HOME")) != NULL) {
+			snprintf(buf, sizeof(buf), "%s%s", hd,
+				filename + 1);
+
+			fn = strdup( buf );
+		}
+	}
+
+	if ((filename != NULL) && (fn == NULL))
+		fn = strdup( filename );
+
+	unlink(fn);
+	free(fn);
+}
+
 #else
 void readline_init(char *filename) { };
 void readline_close(void) { };
 void readline_set_max(int max) { };
+void readline_unlink(char *filename) { };
 
 char *readline_read(char *prompt)
 {
@@ -403,12 +430,13 @@ int run_shell(void)
 				"\n"
 				"Settings:\n\n"
 				"set dumplog <filename>\t\t\t\t\t- set file for dump data (or '-' to write back to stdout)\n"
-				"set history-limit <max>\t\t\t\t\t- set history limit to <max> entries\n\n"
+				"set history-limit <max>\t\t\t\t\t- set history limit to <max> entries\n"
+				"clear history\t\t\t\t\t\t- clear history and history files\n"
+				"\n"
 				"Testing functions:\n\n"
-				"server <port>\t\t\t\t\t\t- start a HTTP server on port <port>\n"
-				"ssl-server <port> <private-key> <public-key> <root-key>\t- start a HTTPS server on port <port>\n"
-				"kill-servers\t\t\t\t\t\t- kill all HTTP/HTTPS servers\n"
-				"get-mime <filename>\t\t\t\t\t- get mime type for <filename>\n\n"
+				"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
+				"stop\t\t\t\t\t\t\t- stop HTTP and HTTPS servers\n"
+				"mime <filename>\t\t\t\t\t\t- get mime type for <filename>\n\n"
 				"Debugging/inspection functions:\n\n"
 				"p <object>\t\t\t\t\t\t- print object information\n"
 				"print <object>\t\t\t\t\t\t- another way to print object information\n"
@@ -422,7 +450,174 @@ int run_shell(void)
 				"\n");
 		}
 		else
-		if ((strncmp(str, "p ", 2) == 0) || (strncmp(str, "print", 5) == 0)) {
+		if (strcmp(str, "clear history") == 0) {
+			readline_unlink(READLINE_HISTORY_FILE_CDV);
+			readline_unlink(READLINE_HISTORY_FILE_IDB);
+
+			printf("History and history files cleared\n");
+		}
+		else
+		if (strncmp(str, "run", 3) == 0) {
+			tTokenizer t = tokenize(str, " ");
+
+			if (t.numTokens < 2)
+				printf("Syntax: run <type> <params>\n");
+			else
+			if (strcmp(t.tokens[1], "help") == 0)
+				printf("Run command options:\n\n"
+					"run server <http|https> <port> [<private-key> <public-key> <root-key>]"
+					"\t-Run HTTP/HTTPS server on specified port\n\n");
+			else
+			if (strcmp(t.tokens[1], "server") == 0) {
+				if (t.numTokens < 4)
+					printf("Syntax: run server <http|https> <port> [<params>]\n");
+				else {
+					if (strcmp(t.tokens[2], "http") == 0) {
+						int fd[2];
+						char buf[128] = { 0 };
+
+						pipe(fd);
+						if (fork() == 0) {
+							int port;
+
+							snprintf(buf, sizeof(buf), "%d", (int)getpid());
+							close(fd[0]);
+							write(fd[1], buf, strlen(buf));
+							port = atoi(t.tokens[3]);
+							free_tokens(t);
+							if (run_server( port, NULL, NULL, NULL) != 0)
+								printf("Error: Cannot run server on port %s\n",
+									t.tokens[1]);
+
+							write(fd[1], "ERR", 3);
+
+							exit(0);
+						}
+
+						/* Try to wait to spawn server, if it fails we will know */
+						usleep(50000);
+
+						close(fd[1]);
+						read(fd[0], buf, sizeof(buf));
+						if (strstr(buf, "ERR") == NULL)
+							utils_pid_add( atoi(buf) );
+						else
+							waitpid( atoi(buf), NULL, 0 );
+					}
+					else
+					if (strcmp(t.tokens[2], "https") == 0) {
+						if (t.numTokens < 7)
+							printf("Syntax: run server <http|https> <port> <private-key>"
+								"<public-key> <root-key>\n");
+						else {
+							int fd[2];
+							char buf[128] = { 0 };
+
+							pipe(fd);
+							if (fork() == 0) {
+								int port;
+								char *s1 = NULL;
+								char *s2 = NULL;
+								char *s3 = NULL;
+
+								snprintf(buf, sizeof(buf), "%d", (int)getpid());
+								close(fd[0]);
+								write(fd[1], buf, strlen(buf));
+								port = atoi(t.tokens[3]);
+								s1 = strdup(t.tokens[4]);
+								s2 = strdup(t.tokens[5]);
+								s3 = strdup(t.tokens[6]);
+								free_tokens(t);
+
+								if (run_server( port, s1, s2, s3 ) != 0)
+									printf("Error: Cannot run SSL server on port %s\n",
+										t.tokens[1]);
+
+								write(fd[1], "ERR", 3);
+								free(s1);
+								free(s2);
+								free(s3);
+
+								exit(0);
+							}
+
+							/* Try to wait to spawn server, if it fails we will know */
+							usleep(50000);
+
+							close(fd[1]);
+							read(fd[0], buf, sizeof(buf));
+							if (strstr(buf, "ERR") == NULL)
+								utils_pid_add( atoi(buf) );
+							else
+								waitpid( atoi(buf), NULL, 0 );
+						}
+					}
+					else
+						printf("Syntax: run server <http|https> <port> <params>\n");
+				}
+			}
+			else
+				printf("Run command options:\n\n"
+					"run server <http|https> <port> [<private-key> <public-key> <root-key>]"
+					"\t-Run HTTP/HTTPS server on specified port\n\n");
+
+			free_tokens(t);
+		}
+		else
+		if (strcmp(str, "stop") == 0) {
+			int ret;
+
+			ret = utils_pid_signal_all(SIGUSR1);
+			printf("Signal sent to %d process(es). Waiting for termination\n",
+				ret);
+			ret = utils_pid_wait_all();
+			printf("%d process(es) terminated\n", ret);
+		}
+		else
+		if (strcmp(str, "pwd") == 0) {
+			char buf[1024] = { 0 };
+
+			getcwd(buf, sizeof(buf));
+			puts(buf);
+		}
+		else
+		if (strcmp(str, "idbshell") == 0) {
+			idb_shell();
+
+			readline_init(READLINE_HISTORY_FILE_CDV);
+		}
+		else
+		if (strcmp(str, "time") == 0) {
+			char tmp[1024] = { 0 };
+
+			tse = utils_get_time( TIME_CURRENT );
+			fTm = get_time_float_us( tse, ts );
+
+			strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
+			printf("Current date/time is %s, current session time is %.3f s (%.3f min, %.3f hod)\n",
+				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+		}
+		else
+		if (strncmp(str, "mime", 4) == 0) {
+			tTokenizer t = tokenize(str, " ");
+
+			if (t.numTokens == 2) {
+				char *tmp = NULL;
+
+				if ((tmp = get_mime_type(t.tokens[1])) == NULL)
+					printf("Error: Cannot get mime type for %s\n", t.tokens[1]);
+				else
+					printf("Mime type for %s is %s\n", t.tokens[1], tmp);
+
+				free(tmp);
+			}
+			else
+				printf("Syntax: mime <filename>\n");
+
+			free_tokens(t);
+		}
+		else
+		if ((strncmp(str, "p", 1) == 0) || (strncmp(str, "print", 5) == 0)) {
 			tTokenizer t = tokenize(str, " ");
 			if (t.numTokens < 2) {
 				printf("Syntax:\tp <object>\n\tprint <object>\n"
@@ -473,129 +668,6 @@ int run_shell(void)
 				}
 				free_tokens(t2);
 			}
-			free_tokens(t);
-		}
-		else
-		if (strncmp(str, "server", 6) == 0) {
-			tTokenizer t = tokenize(str, " ");
-			if (t.numTokens < 2)
-				printf("Syntax: server <port>\n");
-			else {
-				int fd[2];
-				char buf[128] = { 0 };
-
-				pipe(fd);
-				if (fork() == 0) {
-					snprintf(buf, sizeof(buf), "%d", (int)getpid());
-					close(fd[0]);
-					write(fd[1], buf, strlen(buf));
-					if (run_server( atoi(t.tokens[1]), NULL, NULL, NULL) != 0)
-						printf("Error: Cannot run server on port %s\n",
-							t.tokens[1]);
-
-					write(fd[1], "ERR", 3);
-
-					exit(0);
-				}
-
-				/* Try to wait to spawn server, if it fails we will know */
-				usleep(50000);
-
-				close(fd[1]);
-				read(fd[0], buf, sizeof(buf));
-				if (strstr(buf, "ERR") == NULL)
-					utils_pid_add( atoi(buf) );
-				else
-					waitpid( atoi(buf), NULL, 0 );
-			}
-			free_tokens(t);
-		}
-		else
-		if (strncmp(str, "ssl-server", 10) == 0) {
-			tTokenizer t = tokenize(str, " ");
-			if (t.numTokens < 5)
-				printf("Syntax: ssl-server <port> <private-key> <public-key> <root-key>\n");
-			else {
-				int fd[2];
-				char buf[128] = { 0 };
-
-				pipe(fd);
-				if (fork() == 0) {
-					snprintf(buf, sizeof(buf), "%d", (int)getpid());
-					close(fd[0]);
-					write(fd[1], buf, strlen(buf));
-					if (run_server( atoi(t.tokens[1]), t.tokens[2], t.tokens[3], t.tokens[4]) != 0)
-						printf("Error: Cannot run SSL server on port %s\n",
-							t.tokens[1]);
-
-					write(fd[1], "ERR", 3);
-
-					exit(0);
-				}
-
-				/* Try to wait to spawn server, if it fails we will know */
-				usleep(50000);
-
-				close(fd[1]);
-				read(fd[0], buf, sizeof(buf));
-				if (strstr(buf, "ERR") == NULL)
-					utils_pid_add( atoi(buf) );
-				else
-					waitpid( atoi(buf), NULL, 0 );
-			}
-			free_tokens(t);
-		}
-		else
-		if (strcmp(str, "kill-servers") == 0) {
-			int ret;
-
-			ret = utils_pid_signal_all(SIGUSR1);
-			printf("Signal sent to %d process(es). Waiting for termination\n",
-				ret);
-			ret = utils_pid_wait_all();
-			printf("%d process(es) terminated\n", ret);
-		}
-		else
-		if (strcmp(str, "pwd") == 0) {
-			char buf[1024] = { 0 };
-
-			getcwd(buf, sizeof(buf));
-			puts(buf);
-		}
-		else
-		if (strcmp(str, "idbshell") == 0) {
-			idb_shell();
-
-			readline_init(READLINE_HISTORY_FILE_CDV);
-		}
-		else
-		if (strcmp(str, "time") == 0) {
-			char tmp[1024] = { 0 };
-
-			tse = utils_get_time( TIME_CURRENT );
-			fTm = get_time_float_us( tse, ts );
-
-			strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
-			printf("Current date/time is %s, current session time is %.3f s (%.3f min, %.3f hod)\n",
-				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
-		}
-		else
-		if (strncmp(str, "get-mime", 8) == 0) {
-			tTokenizer t = tokenize(str, " ");
-
-			if (t.numTokens == 2) {
-				char *tmp = NULL;
-
-				if ((tmp = get_mime_type(t.tokens[1])) == NULL)
-					printf("Error: Cannot get mime type for %s\n", t.tokens[1]);
-				else
-					printf("Mime type for %s is %s\n", t.tokens[1], tmp);
-
-				free(tmp);
-			}
-			else
-				printf("Syntax: get-mime <filename>\n");
-
 			free_tokens(t);
 		}
 		else
