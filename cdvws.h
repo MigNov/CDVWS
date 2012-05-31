@@ -359,6 +359,8 @@ int module_load(char *libname);
 /* Xml stuff */
 int xml_init(void);
 int xml_load(char *xmlFile);
+char **xml_get_all(char *nodename, int *oNum);
+void xml_free_all(char **ret, int num);
 int xml_query(char *xmlFile, char *xPath);
 char *xml_get(char *basefile, char *node, char *name, char *value, char *out_value);
 void xml_dump(void);

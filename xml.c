@@ -194,6 +194,52 @@ void xml_dump(void) {
 	}
 }
 
+char **xml_get_all(char *nodename, int *oNum)
+{
+	int i, num = 0;
+	char *node = NULL;
+	char *name = NULL;
+	char **ret = NULL;
+	tTokenizer t;
+
+	t = tokenize(nodename, ".");
+	if (t.numTokens < 2)
+		return ret;
+
+	node = t.tokens[0];
+	name = t.tokens[1];
+
+	ret = malloc( sizeof(char *) );
+
+	for (i = 0; i < xml_numAttr; i++) {
+		if ((strcmp(xattr[i].node, node) == 0)
+			&& (strcmp(xattr[i].name, name) == 0)) {
+			ret = realloc( ret, (num + 1) * sizeof(char *) );
+
+			ret[num] = strdup( xattr[i].value );
+			num++;
+		}
+	}
+
+	if (oNum != NULL)
+		*oNum = num;
+
+	free_tokens(t);
+	return ret;
+}
+
+void xml_free_all(char **ret, int num)
+{
+	int i;
+
+	for (i = 0; i < num; i++) {
+		free(ret[i]);
+		ret[i] = NULL;
+	}
+
+	free(ret);
+}
+
 int xml_cleanup(void) {
 	int i;
 

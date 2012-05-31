@@ -425,7 +425,9 @@ int run_shell(void)
 		if ((strncmp(str, "p ", 2) == 0) || (strncmp(str, "print", 5) == 0)) {
 			tTokenizer t = tokenize(str, " ");
 			if (t.numTokens < 2) {
-				printf("Syntax:\tp <object>\n\tprint <object>\n");
+				printf("Syntax:\tp <object>\n\tprint <object>\n"
+					"Example:\tspace.obj (for configuration variables)\n"
+					"\t\t//node/node2.name (for XML variables - load XML and dump it using \"dump xml\", then concatenate node with dot and name)\n");
 			}
 			else {
 				tTokenizer t2 = tokenize(t.tokens[1], ".");
@@ -451,6 +453,20 @@ int run_shell(void)
 					}
 
 					free(cfg);
+
+					if (found == 0) {
+						int num = -1;
+						char **ret = xml_get_all(t.tokens[1], &num);
+
+						if ((num > 0) && (ret != NULL)) {
+							for (i = 0; i < num; i++)
+								printf("XML variable %s #%d value is: %s\n",
+									t.tokens[1], i + 1, ret[i]);
+						}
+
+						xml_free_all(ret, num);
+						found = (num > 0);
+					}
 
 					if (found == 0)
 						printf("No object %s found\n", t.tokens[1]);
