@@ -319,6 +319,8 @@ void config_free(void)
 		free(configVars[i].fullkey);
 	}
 
+	numConfigVars = 0;
+
 	DPRINTF("%s: Configuration data freed\n", __FUNCTION__);
 }
 

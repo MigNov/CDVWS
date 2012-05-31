@@ -108,9 +108,11 @@ int run_server(int port, char *pk, char *pub, char *root_key)
 				_exit(1);
 			}
 
-			accept_loop(ctx, sock, process_request_common);
+			if (ctx != NULL)
+				accept_loop(ctx, sock, process_request_common);
+
 			SSL_CTX_free(ctx);
-			DPRINTF("%s: Closing socket\n", __FUNCTION__);
+			DPRINTF("%s: Closing SSL socket\n", __FUNCTION__);
 			close(fd[1]);
 			close(sock);
 			exit(0);
@@ -131,7 +133,7 @@ int run_server(int port, char *pk, char *pub, char *root_key)
 	}
 
 	/* Applicable only for PK and PUB unset, i.e. non-SSL connection */
-	if (port > 0) {
+	if ((pk == NULL) && (pub == NULL) && (root_key == NULL)) {
 		int fd[2];
 		char buf[16] = { 0 };
 

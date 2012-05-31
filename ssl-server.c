@@ -189,7 +189,7 @@ int write_common(BIO *io, int sock, char *data, int len)
 
 void shutdown_common(SSL *ssl, int s, int reason)
 {
-	if (ssl == NULL) {
+	if (ssl != NULL) {
 		int r;
 		r = SSL_shutdown(ssl);
 		if(!r){
@@ -228,7 +228,7 @@ int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req)
 		sin_size = sizeof(struct sockaddr_in);
 
 		if (socket_has_data(sock, 50000)) {
-			if((s=accept(sock,(struct sockaddr *)&client_addr,&sin_size))<0)
+			if((s = accept(sock, (struct sockaddr *)&client_addr, &sin_size)) < 0)
 				return -EINVAL;
 
 			if ((cpid = fork()) == 0) {
@@ -242,8 +242,8 @@ int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req)
 					SSL_accept(ssl);
 				}
 
-				if (process_request(ssl,s,client_addr,req) == 1) {
-					shutdown(s, SHUT_RDWR);
+				if (process_request(ssl, s, client_addr, req) == 1) {
+					shutdown_common(ssl, s, SHUT_RDWR);
 					close(sock);
 					close(s);
 					return 1;

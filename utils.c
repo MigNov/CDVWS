@@ -768,9 +768,8 @@ void utils_pid_dump(void)
 	if (_pids == NULL)
 		return;
 
-	for (i = 0; i < _pids_num; i++) {
+	for (i = 0; i < _pids_num; i++)
 		dump_printf("PID #%d: %d\n", i + 1, _pids[i]);
-	}
 }
 
 int utils_pid_signal_all(int sig)

@@ -307,10 +307,16 @@ int run_shell(void)
 					config_variable_dump(
 						(t.numTokens == 3) ? t.tokens[2] : NULL);
 				else
+				if (strcmp(t.tokens[1], "pids") == 0)
+					utils_pid_dump();
+				else
 				if (strcmp(t.tokens[1], "help") == 0)
-					printf("Dump command help:\n\ndump - dump both info and configuration\n"
-						"dump info - dump project information only\n"
-						"dump config - dump project configuration only\n\n");
+					printf("Dump command help:\n\n"
+						"dump\t\t- dump both info and configuration\n"
+						"dump info\t- dump project information only\n"
+						"dump config\t- dump project configuration only\n\n"
+						"Internal shell options:\n\n"
+						"dump pids\t- dump server PIDs\n\n");
 				else
 					printf("Unknown option for dump\n");
 			}
@@ -359,16 +365,19 @@ int run_shell(void)
 		}
 		else
 		if (strcmp(str, "help") == 0) {
-			printf("CDV shell help:\n\nload_project <filename>\t- load project file <filename> into memory\n"
-				"dump [<space>]\t\t- dump configuration data, see \"dump help\" for more information\n"
-				"set dumplog <filename>\t- set file for dump data (or '-' to write back to stdout)\n"
-				"set history-limit <max>\t- set history limit to <max> entries\n"
-				"version\t\t\t- get version information\n"
-				"pwd\t\t\t- print current working directory\n"
-				"time\t\t\t- get current and session time\n"
-				"idbshell\t\t- go into IDB shell\n"
-				"p <object>\t\t- print object information\n"
-				"print <object>\t\t- another way to print object information\n"
+			printf("CDV shell help:\n\nload_project <filename>\t\t\t\t\t- load project file <filename> into memory\n"
+				"dump [<space>]\t\t\t\t\t\t- dump configuration data, see \"dump help\" for more information\n"
+				"set dumplog <filename>\t\t\t\t\t- set file for dump data (or '-' to write back to stdout)\n"
+				"set history-limit <max>\t\t\t\t\t- set history limit to <max> entries\n"
+				"version\t\t\t\t\t\t\t- get version information\n"
+				"pwd\t\t\t\t\t\t\t- print current working directory\n"
+				"time\t\t\t\t\t\t\t- get current and session time\n"
+				"idbshell\t\t\t\t\t\t- go into IDB shell\n"
+				"server <port>\t\t\t\t\t\t- start a HTTP server on port <port>\n"
+				"ssl-server <port> <private-key> <public-key> <root-key>\t- start a HTTPS server on port <port>\n"
+				"kill-servers\t\t\t\t\t\t- kill all HTTP/HTTPS servers\n"
+				"p <object>\t\t\t\t\t\t- print object information\n"
+				"print <object>\t\t\t\t\t\t- another way to print object information\n"
 				"\n");
 		}
 		else
@@ -445,7 +454,42 @@ int run_shell(void)
 			free_tokens(t);
 		}
 		else
-		if (strcmp(str, "killserver") == 0) {
+		if (strncmp(str, "ssl-server", 10) == 0) {
+			tTokenizer t = tokenize(str, " ");
+			if (t.numTokens < 5)
+				printf("Syntax: ssl-server <port> <private-key> <public-key> <root-key>\n");
+			else {
+				int fd[2];
+				char buf[128] = { 0 };
+
+				pipe(fd);
+				if (fork() == 0) {
+					snprintf(buf, sizeof(buf), "%d", (int)getpid());
+					close(fd[0]);
+					write(fd[1], buf, strlen(buf));
+					if (run_server( atoi(t.tokens[1]), t.tokens[2], t.tokens[3], t.tokens[4]) != 0)
+						printf("Error: Cannot run SSL server on port %s\n",
+							t.tokens[1]);
+
+					write(fd[1], "ERR", 3);
+
+					exit(0);
+				}
+
+				/* Try to wait to spawn server, if it fails we will know */
+				usleep(50000);
+
+				close(fd[1]);
+				read(fd[0], buf, sizeof(buf));
+				if (strstr(buf, "ERR") == NULL)
+					utils_pid_add( atoi(buf) );
+				else
+					waitpid( atoi(buf), NULL, 0 );
+			}
+			free_tokens(t);
+		}
+		else
+		if (strcmp(str, "kill-servers") == 0) {
 			int ret;
 
 			ret = utils_pid_signal_all(SIGUSR1);
