@@ -206,18 +206,18 @@ void atex(void)
 
 int main(int argc, char *argv[])
 {
-	int i;
+	int i = 1;
 
 	atexit( atex );
 
 	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0))
-		return run_shell();
+		return run_shell( NULL, STDIN );
 
 	run_servers(2305, 2306);
 
 	//i = test_xml_query_data();
 	//i = test_idb();
-	i = test_idb_queries();
+	//i = test_idb_queries();
 
 	//i = load_project("./examples/test/test.project");
 	wait(NULL);

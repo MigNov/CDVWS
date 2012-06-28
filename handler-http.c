@@ -71,8 +71,22 @@ int http_host_unknown(BIO *io, int connected, char *host)
 	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\n\n<html>"
 		"<head><title>Server unknown</title></head><body>"
 		"<h1>Server unknown</h1>We are sorry but server project "
-		"cannot be resolved.<hr />Server is running on CDV "
-		"WebServer v%s</body></html>", VERSION);
+		"cannot be resolved.<br />Server address: %s<hr />Server is running on CDV "
+		"WebServer v%s</body></html>", host, VERSION);
+
+	write_common(io, connected, tmp, strlen(tmp));
+	return 1;
+}
+
+int http_feature_disabled(BIO *io, int connected, char *feature)
+{
+	char tmp[TCP_BUF_SIZE] = { 0 };
+
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 403 Forbidden\n\n<html>"
+		"<head><title>Feature disabled</title></head><body>"
+		"<h1>Feature disabled</h1>We are sorry but feature you requested has been "
+		"disabled by system administrator.<br />Feature name: %s<hr />Server is "
+		"running on CDV WebServer v%s</body></html>", feature, VERSION);
 
 	write_common(io, connected, tmp, strlen(tmp));
 	return 1;
@@ -81,6 +95,7 @@ int http_host_unknown(BIO *io, int connected, char *host)
 int http_host_page_not_found(BIO *io, int connected, char *path)
 {
 	char tmp[TCP_BUF_SIZE] = { 0 };
+
 	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\nContent-Type: text/html\n\n"
 			"<html><head><title>Not Found</title><body><h1>Not Found</h1>"
 			"We are sorry but path %s you requested cannot be found.<br /><hr />"
@@ -149,17 +164,51 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
+
+	/* First check if user requires shell access */
+	if (strncmp(path, "/shell", 6) == 0) {
+		/*
+		if (_shell_enabled == 0)
+			return http_feature_disabled(io, connected, "Internal WebShell");
+		*/
+
+		if (strncmp(path, "/shell@", 7) == 0) {
+			//char *str = strdup( path + 7 );
+
+			char *str = strdup( replace(replace(path + 7, "%20", " "), "%2F", "/") );
+			if (strncmp(str, "idb-", 4) == 0)
+				process_idb_command(utils_get_time( TIME_CURRENT), io, connected, str + 4);
+			else
+				process_shell_command(utils_get_time( TIME_CURRENT), io, connected, str, ua, host);
+			return 1;
+		}
+		else {
+			char loc[4096] = { 0 };
+			char buf[4096] = { 0 };
+
+			getcwd(buf, sizeof(buf));
+			if (strcmp(path, "/shell") == 0)
+				snprintf(loc, sizeof(loc), "%s%s/shell.html", buf, path);
+			else
+				snprintf(loc, sizeof(loc), "%s%s", buf, path);
+
+			if (access(loc, R_OK) == 0)
+				return http_host_put_file(io, connected, loc);
+		}
+
+		return http_host_unknown(io, connected, "Internal WebShell");
+	}
+
 	if (find_project_for_web("examples", host) != 0)
 		return http_host_unknown(io, connected, host);
 
 	found = 0;
 
-	/* First, try to look for the file in files */
+	/* Then try to look for the file in files */
 	char *dir = NULL;
 	if ((dir = project_info_get("dir_files")) != NULL) {
 		char *tmp = project_info_get("dir_root");
 		char loc[4096] = { 0 };
-
 		if (tmp != NULL) {
 			snprintf(loc, sizeof(loc), "%s/%s%s", tmp, dir, path);
 			DPRINTF("%s: Real file is '%s'\n", __FUNCTION__, loc);

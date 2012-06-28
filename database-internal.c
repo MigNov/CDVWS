@@ -618,8 +618,8 @@ int idb_query(char *query)
 
 		idb_results_dump( _last_tds );
 
-		for (i = 0; i < t2.numTokens; i++)
-			free(aFields[i]);
+//		for (i = 0; i < t2.numTokens; i++)
+//			free(aFields[i]);
 		free(aFields);
 		free_tokens(t2);
 	}

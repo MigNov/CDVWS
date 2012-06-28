@@ -71,7 +71,9 @@ char *readline_read(char *prompt)
 {
 	char *tmp = readline(prompt);
 
-	add_history(tmp);
+	if (strcmp(tmp, "quit") != 0)
+		add_history(tmp);
+
 	return trim(tmp);
 }
 
@@ -122,374 +124,438 @@ char *readline_read(char *prompt)
 }
 #endif
 
-int idb_shell(void)
+int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 {
+	int ret;
+	float fTm = -1;
+	struct timespec tse;
+
+	if (str == NULL)
+		return -EIO;
+
+	if (((strlen(str) > 0) && (str[0] == -1))
+		|| (strcmp(str, "\\q") == 0)
+		|| (strcmp(str, "quit") == 0))
+			return 1;
+
+	if (strcmp(str, "help") == 0) {
+		desc_printf(io, cfd, "iDB shell help:\n\nNote: Commands *are* case sensitive\n\n"
+			"SET MINCRYPT <password> <salt>\t- set minCrypt encryption if available\n"
+			"SET FRESHQUERYLOG <filename>\t- set query logging with log overwriting\n"
+			"SET QUERYLOG <filename>\t\t- set query logging without log overwriting\n"
+			"SET DATADIR <directory>\t\t- set data directory\n"
+			"SET FILENAME <filename>\t\t- set filename to write database to\n"
+			"REINIT <filename>\t\t- initialize a fresh database in <filename>\n"
+			"INIT <filename>\t\t\t- initialize a database in <filename>\n"
+			"CLOSE\t\t\t\t- close database session\n\n"
+			"Database manipulation commands:\n\n"
+			"CREATE TABLE\t\t\t- create a table in database\n"
+			"\t\t\t\t\tExample: CREATE TABLE table(id int, data string) COMMENT 'Comment';\n"
+			"SELECT\t\t\t\t- select data from database table\n"
+			"\t\t\t\t\tExample: SELECT * FROM table WHERE id = 1\n"
+			"INSERT\t\t\t\t- insert a row into database table\n"
+			"\t\t\t\t\tExample: INSERT INTO table(id, data) VALUES( 1, 'data' );\n"
+			"UPDATE\t\t\t\t- update row in database table\n"
+			"\t\t\t\t\tExample: UPDATE table SET data = 'new-data'[, id = 1] WHERE id = 1\n"
+			"DELETE\t\t\t\t- delete row from database table\n"
+			"\t\t\t\t\tExample: DELETE FROM table WHERE id = 1\n"
+			"DROP TABLE\t\t\t- drop table in a database\n"
+			"\t\t\t\t\tExample: DROP TABLE table\n"
+			"COMMIT\t\t\t\t- commit changes to database file\n"
+			"ROLLBACK\t\t\t- rollback changes\n"
+			"DUMP\t\t\t\t- dump all data\n\n"
+			"Other commands:\n\n"
+			"run\t\t\t\t- run a batch of commands (in SQL format)\n"
+			"pwd\t\t\t\t- print current working directory\n"
+			"time\t\t\t\t- get current and IDB session time\n"
+			"quit\t\t\t\t- end IDB session\n"
+			"\n");
+	}
+	else
+	if (strcmp(str, "pwd") == 0) {
+		char buf[1024] = { 0 };
+
+		getcwd(buf, sizeof(buf));
+		write_common(io, cfd, buf, strlen(buf));
+		write_common(io, cfd, "\n", 1);
+	}
+	else
+	if (strcmp(str, "time") == 0) {
+		char tmp[1024] = { 0 };
+
+		tse = utils_get_time( TIME_CURRENT );
+		fTm = get_time_float_us( tse, ts );
+
+		/* TODO: Fix to calculate real time when spawned from run_shell() */
+		strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
+		desc_printf(io, cfd, "Current date/time is %s, current session time is %.3f s (%.3f min, %.3f h)\n",
+			tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+	}
+	else
+	if ((strncmp(str, "run", 3) == 0) || (strncmp(str, "\\.", 2) == 0)) {
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens == 2) {
+			if (access(t.tokens[1], R_OK) == 0) {
+				FILE *fp = NULL;
+				char buf[BUFSIZE];
+
+				fp = fopen(t.tokens[1], "r");
+				if (fp != NULL) {
+					int num = 0;
+
+					while (!feof(fp)) {
+						memset(buf, 0, sizeof(buf));
+
+						fgets(buf, sizeof(buf), fp);
+						if ((strlen(buf) > 0)
+							&& (buf[strlen(buf) - 1] == '\n'))
+							buf[strlen(buf) - 1] = 0;
+
+						if (strlen(buf) > 0) {
+							num++;
+							int ret = idb_query(buf);
+							desc_printf(io, cfd, "Query '%s' returned with code %d\n",
+								buf, ret);
+						}
+					}
+
+					desc_printf(io, cfd, "%d queries processed\n", num);
+
+					fclose(fp);
+				}
+				else
+					desc_printf(io, cfd, "Error: Cannot open file %s for reading\n",
+						t.tokens[1]);
+			}
+			else
+				desc_printf(io, cfd, "Error: Cannot access file %s\n", t.tokens[1]);
+		}
+		else
+			desc_printf(io, cfd, "Syntax:\t1. run <filename>\n\t2. \\.  <filename>\n");
+
+		free_tokens(t);
+	}
+	else
+	if (strlen(str) > 0) {
+		ret = idb_query(str);
+		if ((strcmp(str, "COMMIT") == 0) && (ret == -EINVAL)) {
+			/* File name is missing, ask for new file name */
+			char *tmp = readline_read("File name is not set. Please enter name of file to "
+					"write database to.\nFile name: ");
+			char tmp2[4096] = { 0 };
+
+			snprintf(tmp2, sizeof(tmp2), "SET FILENAME %s", tmp);
+			free(tmp);
+
+			idb_query(tmp2);
+			ret = idb_query(str);
+		}
+
+		if (strncmp(str, "SELECT", 6) == 0) {
+			idb_results_dump( idb_get_last_select_data() );
+			idb_free_last_select_data();
+		}
+
+		desc_printf(io, cfd, "Query '%s' returned with error code %d\n", str, ret);
+	}
+
+	return ret;
+}
+
+int idb_shell(BIO *io, int cfd)
+{
+	int ret;
 	float fTm = -1;
 	struct timespec ts = utils_get_time( TIME_CURRENT );
 	struct timespec tse;
 
-	readline_init(READLINE_HISTORY_FILE_IDB);
+	if (cfd == STDIN)
+		readline_init(READLINE_HISTORY_FILE_IDB);
 
-	printf("\nCDV WebServer v%s internal database (iDB) shell\n", VERSION);
+	desc_printf(io, cfd, "\nCDV WebServer v%s internal database (iDB) shell\n", VERSION);
 	while (1) {
-		char *str = readline_read("idb> ");
+		char *str = NULL;
 
-		if (str == NULL)
-			return -EIO;
-
-		if (((strlen(str) > 0) && (str[0] == -1))
-			|| (strcmp(str, "\\q") == 0)
-			|| (strcmp(str, "quit") == 0))
-				break;
-
-		if (strcmp(str, "help") == 0) {
-			printf("iDB shell help:\n\nNote: Commands *are* case sensitive\n\n"
-				"SET MINCRYPT <password> <salt>\t- set minCrypt encryption if available\n"
-				"SET FRESHQUERYLOG <filename>\t- set query logging with log overwriting\n"
-				"SET QUERYLOG <filename>\t\t- set query logging without log overwriting\n"
-				"SET DATADIR <directory>\t\t- set data directory\n"
-				"SET FILENAME <filename>\t\t- set filename to write database to\n"
-				"REINIT <filename>\t\t- initialize a fresh database in <filename>\n"
-				"INIT <filename>\t\t\t- initialize a database in <filename>\n"
-				"CLOSE\t\t\t\t- close database session\n\n"
-				"Database manipulation commands:\n\n"
-				"CREATE TABLE\t\t\t- create a table in database\n"
-				"\t\t\t\t\tExample: CREATE TABLE table(id int, data string) COMMENT 'Comment';\n"
-				"SELECT\t\t\t\t- select data from database table\n"
-				"\t\t\t\t\tExample: SELECT * FROM table WHERE id = 1\n"
-				"INSERT\t\t\t\t- insert a row into database table\n"
-				"\t\t\t\t\tExample: INSERT INTO table(id, data) VALUES( 1, 'data' );\n"
-				"UPDATE\t\t\t\t- update row in database table\n"
-				"\t\t\t\t\tExample: UPDATE table SET data = 'new-data'[, id = 1] WHERE id = 1\n"
-				"DELETE\t\t\t\t- delete row from database table\n"
-				"\t\t\t\t\tExample: DELETE FROM table WHERE id = 1\n"
-				"DROP TABLE\t\t\t- drop table in a database\n"
-				"\t\t\t\t\tExample: DROP TABLE table\n"
-				"COMMIT\t\t\t\t- commit changes to database file\n"
-				"ROLLBACK\t\t\t- rollback changes\n"
-				"DUMP\t\t\t\t- dump all data\n\n"
-				"Other commands:\n\n"
-				"run\t\t\t\t- run a batch of commands (in SQL format)\n"
-				"pwd\t\t\t\t- print current working directory\n"
-				"time\t\t\t\t- get current and IDB session time\n"
-				"quit\t\t\t\t- end IDB session\n"
-				"\n");
-		}
+		if ((cfd == STDIN) && (io == NULL))
+			str = readline_read("idb> ");
 		else
-		if (strcmp(str, "pwd") == 0) {
-			char buf[1024] = { 0 };
+			str = desc_read(io, cfd);
 
-			getcwd(buf, sizeof(buf));
-			puts(buf);
-		}
-		else
-		if (strcmp(str, "time") == 0) {
-			char tmp[1024] = { 0 };
-
-			tse = utils_get_time( TIME_CURRENT );
-			fTm = get_time_float_us( tse, ts );
-
-			strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
-			printf("Current date/time is %s, current session time is %.3f s (%.3f min, %.3f hod)\n",
-				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
-		}
-		else
-		if ((strncmp(str, "run", 3) == 0) || (strncmp(str, "\\.", 2) == 0)) {
-			tTokenizer t = tokenize(str, " ");
-
-			if (t.numTokens == 2) {
-				if (access(t.tokens[1], R_OK) == 0) {
-					FILE *fp = NULL;
-					char buf[BUFSIZE];
-
-					fp = fopen(t.tokens[1], "r");
-					if (fp != NULL) {
-						int num = 0;
-
-						while (!feof(fp)) {
-							memset(buf, 0, sizeof(buf));
-
-							fgets(buf, sizeof(buf), fp);
-							if ((strlen(buf) > 0)
-								&& (buf[strlen(buf) - 1] == '\n'))
-								buf[strlen(buf) - 1] = 0;
-
-							if (strlen(buf) > 0) {
-								num++;
-								int ret = idb_query(buf);
-								printf("Query '%s' returned with code %d\n",
-									buf, ret);
-							}
-						}
-
-						printf("%d queries processed\n", num);
-
-						fclose(fp);
-					}
-					else
-						printf("Error: Cannot open file %s for reading\n",
-							t.tokens[1]);
-				}
-				else
-					printf("Error: Cannot access file %s\n", t.tokens[1]);
-			}
-			else
-				printf("Syntax:\t1. run <filename>\n\t2. \\.  <filename>\n");
-
-			free_tokens(t);
-		}
-		else
-		if (strlen(str) > 0) {
-			int ret = idb_query(str);
-			if ((strcmp(str, "COMMIT") == 0) && (ret == -EINVAL)) {
-				/* File name is missing, ask for new file name */
-				char *tmp = readline_read("File name is not set. Please enter name of file to "
-						"write database to.\nFile name: ");
-				char tmp2[4096] = { 0 };
-
-				snprintf(tmp2, sizeof(tmp2), "SET FILENAME %s", tmp);
-				free(tmp);
-
-				idb_query(tmp2);
-				ret = idb_query(str);
-			}
-
-			if (strncmp(str, "SELECT", 6) == 0) {
-				idb_results_dump( idb_get_last_select_data() );
-				idb_free_last_select_data();
-			}
-
-			printf("Query '%s' returned with error code %d\n", str, ret);
-		}
-
-		free(str);
+		ret = process_idb_command(ts, io, cfd, str);
+		if (ret == 1)
+			break;
 	}
 
 	idb_free();
-	printf("\n");
+	desc_printf(io, cfd, "\n");
 
 	tse = utils_get_time( TIME_CURRENT );
 	fTm = get_time_float_us( tse, ts );
-	DPRINTF("%s: IDB Shell session time is %.3f s (%.3f min, %.3f hod)\n", __FUNCTION__,
+	DPRINTF("%s: IDB Shell session time is %.3f s (%.3f min, %.3f h)\n", __FUNCTION__,
 		fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
 
 	readline_close();
-	return 0;
+	return ret;
 }
 
-int run_shell(void)
+int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char *ua, char *host)
 {
+	int ret = 0;
 	float fTm = -1;
-	struct timespec ts = utils_get_time( TIME_CURRENT );
 	struct timespec tse;
 
-	first_initialize();
+	if (str == NULL)
+		return -EIO;
 
-	readline_init(READLINE_HISTORY_FILE_CDV);
+	if (((strlen(str) > 0) && (str[0] == -1))
+		|| (strcmp(str, "\\q") == 0)
+		|| (strcmp(str, "quit") == 0))
+			return 1;
 
-	printf("\nCDV WebServer v%s shell\n", VERSION);
-	while (1) {
-		char *str = readline_read("(cdv) ");
+	if (strncmp(str, "load", 4) == 0) {
+		tTokenizer t = tokenize(str, " ");
 
-		if (str == NULL)
-			return -EIO;
-
-		if (((strlen(str) > 0) && (str[0] == -1))
-			|| (strcmp(str, "\\q") == 0)
-			|| (strcmp(str, "quit") == 0))
-				break;
-
-		if (strncmp(str, "load", 4) == 0) {
-			tTokenizer t = tokenize(str, " ");
-
-			if (t.numTokens < 3) {
-				if ((t.numTokens == 2) && (strcmp(t.tokens[1], "help") == 0))
-					printf("Load command help:\n\n"
-						"load xml <filename>\t- load XML file <filename> into memory\n"
-						"load project <filename>\t- load project file <filename> into memory\n"
-						"\n");
-				else
-					printf("Syntax: load <type> <filename>\n");
-			}
-			else {
-				if (access(t.tokens[2], R_OK) != 0)
-					printf("Error: Cannot open file '%s'\n", t.tokens[2]);
-				else {
-					if (strcmp(t.tokens[1], "xml") == 0) {
-						int ret = xml_load(t.tokens[2]);
-
-						if (ret == 0) {
-							printf("XML file %s loaded successfully\n", t.tokens[2]);
-						}
-						else
-							printf("Error: Cannot load XML file %s\n", t.tokens[2]);
-					}
-					else
-					if (strcmp(t.tokens[1], "project") == 0) {
-						int ret = load_project(t.tokens[2]);
-
-						if (ret == 0) {
-							DPRINTF("%s: Project file '%s' has been loaded successfully\n",
-								__FUNCTION__, t.tokens[2]);
-							_shell_project_loaded = 1;
-							printf("Project file '%s' loaded successfully\n", t.tokens[2]);
-						}
-						else
-							printf("Error: Project file '%s' load failed with error code %d\n",
-								t.tokens[2], ret);
-					}
-					else
-						printf("Error: Invalid load type\n");
-				}
-			}
-
-			free_tokens(t);
-		}
-		else
-		if (strncmp(str, "dump", 4) == 0) {
-			tTokenizer t = tokenize(str, " ");
-
-			if (dump_file_is_set())
-				printf("Using dump log file for writing these data\n");
-
-			if (t.numTokens == 1) {
-				project_dump();
-			}
-			else {
-				if (strcmp(t.tokens[1], "info") == 0)
-					project_info_dump();
-				else
-				if (strcmp(t.tokens[1], "config") == 0)
-					config_variable_dump(
-						(t.numTokens == 3) ? t.tokens[2] : NULL);
-				else
-				if (strcmp(t.tokens[1], "pids") == 0)
-					utils_pid_dump();
-				else
-				if (strcmp(t.tokens[1], "xml") == 0)
-					xml_dump();
-				else
-				if (strcmp(t.tokens[1], "help") == 0)
-					printf("Dump command help:\n\n"
-						"dump\t\t- dump both info and configuration\n"
-						"dump xml\t- dump XML information\n"
-						"dump info\t- dump project information only\n"
-						"dump config\t- dump project configuration only\n\n"
-						"Internal shell options:\n\n"
-						"dump pids\t- dump server PIDs\n\n");
-				else
-					printf("Unknown option for dump\n");
-			}
-			free_tokens(t);
-		}
-		else
-		if (strncmp(str, "set", 3) == 0) {
-			tTokenizer t = tokenize(str, " ");
-
-			if (t.numTokens < 3) {
-				printf("Error: Invalid SET syntax\n");
-				continue;
-			}
-
-			if (strcmp(t.tokens[1], "dumplog") == 0) {
-				if (strcmp(t.tokens[2], "-") == 0) {
-					dump_unset_file();
-					printf("Dump file unset, will write to stdout\n");
-				}
-				else {
-					if (dump_set_file(t.tokens[2]) != 0)
-						printf("Error: Cannot set dump log file to '%s'\n", t.tokens[2]);
-					else
-						printf("Dump file set to %s\n", t.tokens[2]);
-				}
-			}
+		if (t.numTokens < 3) {
+			if ((t.numTokens == 2) && (strcmp(t.tokens[1], "help") == 0))
+				desc_printf(io, cfd, "Load command help:\n\n"
+					"load xml <filename>\t- load XML file <filename> into memory\n"
+					"load project <filename>\t- load project file <filename> into memory\n"
+					"\n");
 			else
-			if (strcmp(t.tokens[1], "history-limit") == 0) {
-				if (t.numTokens == 3) {
-					int limit = atoi(t.tokens[2]);
-					if (limit > 0) {
-						readline_set_max( limit );
-						printf("History limit set to %d\n", limit);
+				desc_printf(io, cfd, "Syntax: load <type> <filename>\n");
+		}
+		else {
+			if (access(t.tokens[2], R_OK) != 0)
+				desc_printf(io, cfd, "Error: Cannot open file '%s'\n", t.tokens[2]);
+			else {
+				if (strcmp(t.tokens[1], "xml") == 0) {
+					int ret = xml_load(t.tokens[2]);
+
+					if (ret == 0)
+						desc_printf(io, cfd, "XML file %s loaded successfully\n", t.tokens[2]);
+					else
+						desc_printf(io, cfd, "Error: Cannot load XML file %s\n", t.tokens[2]);
+				}
+				else
+				if (strcmp(t.tokens[1], "project") == 0) {
+					int ret = load_project(t.tokens[2]);
+
+					if (ret == 0) {
+						DPRINTF("%s: Project file '%s' has been loaded successfully\n",
+							__FUNCTION__, t.tokens[2]);
+						_shell_project_loaded = 1;
+						desc_printf(io, cfd, "Project file '%s' loaded successfully\n", t.tokens[2]);
 					}
 					else
-						printf("Syntax: set history-limit <max>\n");
+						desc_printf(io, cfd, "Error: Project file '%s' load failed with error code %d\n",
+							t.tokens[2], ret);
 				}
+				else
+					desc_printf(io, cfd, "Error: Invalid load type\n");
 			}
+		}
 
-			free_tokens(t);
-		}
-		else
-		if (strcmp(str, "version") == 0) {
-			printf("CDV WebServer version: %s\n\n", VERSION);
-			printf("No modules found\n");
-		}
-		else
-		if (strcmp(str, "help") == 0) {
-			printf("CDV shell help:\n\n"
-				"idbshell\t\t\t\t\t\t- go into IDB shell\n"
-				"\n"
-				"Settings:\n\n"
-				"set dumplog <filename>\t\t\t\t\t- set file for dump data (or '-' to write back to stdout)\n"
-				"set history-limit <max>\t\t\t\t\t- set history limit to <max> entries\n"
-				"clear history\t\t\t\t\t\t- clear history and history files\n"
-				"\n"
-				"Testing functions:\n\n"
-				"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
-				"stop\t\t\t\t\t\t\t- stop HTTP and HTTPS servers\n"
-				"mime <filename>\t\t\t\t\t\t- get mime type for <filename>\n\n"
-				"Debugging/inspection functions:\n\n"
-				"p <object>\t\t\t\t\t\t- print object information\n"
-				"print <object>\t\t\t\t\t\t- another way to print object information\n"
-				"dump [<space>]\t\t\t\t\t\t- dump configuration data, see \"dump help\" for more information\n"
-				"load <type> <filename>\t\t\t\t\t- load file into memory, see \"load help\" for more information\n\n"
-				"Other functions:\n\n"
-				"pwd\t\t\t\t\t\t\t- print current working directory\n"
-				"time\t\t\t\t\t\t\t- get current and session time\n"
-				"version\t\t\t\t\t\t\t- get version information\n"
-				"quit\t\t\t\t\t\t\t- quit shell session\n"
-				"\n");
-		}
-		else
-		if (strcmp(str, "clear history") == 0) {
-			readline_unlink(READLINE_HISTORY_FILE_CDV);
-			readline_unlink(READLINE_HISTORY_FILE_IDB);
+		free_tokens(t);
+	}
+	else
+	if ((strncmp(str, "dump", 4) == 0) && SHELL_IS_REMOTE(io, cfd)) {
+		desc_printf(io, cfd, "Remote shell cannot handle dump data\n");
+	}
+	else
+	if ((strncmp(str, "dump", 4) == 0) && !SHELL_IS_REMOTE(io, cfd)) {
+		tTokenizer t = tokenize(str, " ");
 
-			printf("History and history files cleared\n");
-		}
-		else
-		if (strncmp(str, "run", 3) == 0) {
-			tTokenizer t = tokenize(str, " ");
+		if (dump_file_is_set())
+			desc_printf(io, cfd, "Using dump log file for writing these data\n");
 
-			if (t.numTokens < 2)
-				printf("Syntax: run <type> <params>\n");
+		if (t.numTokens == 1) {
+			project_dump();
+		}
+		else {
+			if (strcmp(t.tokens[1], "info") == 0)
+				project_info_dump();
+			else
+			if (strcmp(t.tokens[1], "config") == 0)
+				config_variable_dump(
+					(t.numTokens == 3) ? t.tokens[2] : NULL);
+			else
+			if (strcmp(t.tokens[1], "pids") == 0)
+				utils_pid_dump();
+			else
+			if (strcmp(t.tokens[1], "xml") == 0)
+				xml_dump();
 			else
 			if (strcmp(t.tokens[1], "help") == 0)
-				printf("Run command options:\n\n"
-					"run server <http|https> <port> [<private-key> <public-key> <root-key>]"
-					"\t-Run HTTP/HTTPS server on specified port\n\n");
+				desc_printf(io, cfd, "Dump command help:\n\n"
+					"dump\t\t- dump both info and configuration\n"
+					"dump xml\t- dump XML information\n"
+					"dump info\t- dump project information only\n"
+					"dump config\t- dump project configuration only\n\n"
+					"Internal shell options:\n\n"
+					"dump pids\t- dump server PIDs\n\n");
 			else
-			if (strcmp(t.tokens[1], "server") == 0) {
-				if (t.numTokens < 4)
-					printf("Syntax: run server <http|https> <port> [<params>]\n");
-				else {
-					if (strcmp(t.tokens[2], "http") == 0) {
+				desc_printf(io, cfd, "Unknown option for dump\n");
+		}
+		free_tokens(t);
+	}
+	else
+	if (strncmp(str, "set", 3) == 0) {
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens < 3) {
+			desc_printf(io, cfd, "Error: Invalid SET syntax\n");
+			return 0;
+		}
+
+		if (strcmp(t.tokens[1], "dumplog") == 0) {
+			if (strcmp(t.tokens[2], "-") == 0) {
+				dump_unset_file();
+				desc_printf(io, cfd, "Dump file unset, will write to stdout\n");
+			}
+			else {
+				if (dump_set_file(t.tokens[2]) != 0)
+					desc_printf(io, cfd, "Error: Cannot set dump log file to '%s'\n", t.tokens[2]);
+				else
+					desc_printf(io, cfd, "Dump file set to %s\n", t.tokens[2]);
+			}
+		}
+		else
+		if (strcmp(t.tokens[1], "history-limit") == 0) {
+			if (t.numTokens == 3) {
+				int limit = atoi(t.tokens[2]);
+				if (limit > 0) {
+					readline_set_max( limit );
+					desc_printf(io, cfd, "History limit set to %d\n", limit);
+				}
+				else
+					desc_printf(io, cfd, "Syntax: set history-limit <max>\n");
+			}
+		}
+
+		free_tokens(t);
+	}
+	else
+	if (strcmp(str, "version") == 0) {
+		desc_printf(io, cfd, "CDV WebServer version: %s\n\n", VERSION);
+		desc_printf(io, cfd, "No modules found\n");
+	}
+	else
+	if (strcmp(str, "help") == 0) {
+		desc_printf(io, cfd, "CDV shell help:\n\n"
+			"idbshell\t\t\t\t\t\t- go into IDB shell\n"
+			"\n"
+			"Settings:\n\n"
+			"set dumplog <filename>\t\t\t\t\t- set file for dump data (or '-' to write back to stdout)\n"
+			"set history-limit <max>\t\t\t\t\t- set history limit to <max> entries\n"
+			"clear history\t\t\t\t\t\t- clear history and history files\n"
+			"\n"
+			"Testing functions:\n\n"
+			"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
+			"stop\t\t\t\t\t\t\t- stop HTTP and HTTPS servers\n"
+			"mime <filename>\t\t\t\t\t\t- get mime type for <filename>\n\n"
+			"Debugging/inspection functions:\n\n"
+			"p <object>\t\t\t\t\t\t- print object information\n"
+			"print <object>\t\t\t\t\t\t- another way to print object information\n"
+			"dump [<space>]\t\t\t\t\t\t- dump configuration data, see \"dump help\" for more information\n"
+			"load <type> <filename>\t\t\t\t\t- load file into memory, see \"load help\" for more information\n\n"
+			"Other functions:\n\n"
+			"pwd\t\t\t\t\t\t\t- print current working directory\n"
+			"ls <dir>\t\t\t\t\t\t- list files and directories in <dir>\n"
+			"time\t\t\t\t\t\t\t- get current and session time\n"
+			"info\t\t\t\t\t\t\t- get session information\n"
+			"version\t\t\t\t\t\t\t- get version information\n"
+			"quit\t\t\t\t\t\t\t- quit shell session\n"
+			"\n");
+	}
+	else
+	if (strcmp(str, "clear history") == 0) {
+		readline_unlink(READLINE_HISTORY_FILE_CDV);
+		readline_unlink(READLINE_HISTORY_FILE_IDB);
+
+		desc_printf(io, cfd, "History and history files cleared\n");
+	}
+	else
+	if (strncmp(str, "run", 3) == 0) {
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens < 2)
+			desc_printf(io, cfd, "Syntax: run <type> <params>\n");
+		else
+		if (strcmp(t.tokens[1], "help") == 0)
+			desc_printf(io, cfd, "Run command options:\n\n"
+				"run server <http|https> <port> [<private-key> <public-key> <root-key>]"
+				"\t-Run HTTP/HTTPS server on specified port\n\n");
+		else
+		if (strcmp(t.tokens[1], "server") == 0) {
+			if (t.numTokens < 4)
+				desc_printf(io, cfd, "Syntax: run server <http|https> <port> [<params>]\n");
+			else {
+				if (strcmp(t.tokens[2], "http") == 0) {
+					int fd[2];
+					char buf[128] = { 0 };
+
+					pipe(fd);
+					if (fork() == 0) {
+						int port;
+
+						snprintf(buf, sizeof(buf), "%d", (int)getpid());
+						close(fd[0]);
+						write(fd[1], buf, strlen(buf));
+						port = atoi(t.tokens[3]);
+						free_tokens(t);
+						if (run_server( port, NULL, NULL, NULL) != 0)
+							desc_printf(io, cfd, "Error: Cannot run server on port %s\n",
+								t.tokens[1]);
+
+						write(fd[1], "ERR", 3);
+
+						exit(0);
+					}
+
+					/* Try to wait to spawn server, if it fails we will know */
+					usleep(50000);
+
+					close(fd[1]);
+					read(fd[0], buf, sizeof(buf));
+					if (strstr(buf, "ERR") == NULL)
+						utils_pid_add( atoi(buf) );
+					else
+						waitpid( atoi(buf), NULL, 0 );
+				}
+				else
+				if (strcmp(t.tokens[2], "https") == 0) {
+					if (t.numTokens < 7)
+						desc_printf(io, cfd, "Syntax: run server <http|https> <port> <private-key>"
+							"<public-key> <root-key>\n");
+					else {
 						int fd[2];
 						char buf[128] = { 0 };
 
 						pipe(fd);
 						if (fork() == 0) {
 							int port;
+							char *s1 = NULL;
+							char *s2 = NULL;
+							char *s3 = NULL;
 
 							snprintf(buf, sizeof(buf), "%d", (int)getpid());
 							close(fd[0]);
 							write(fd[1], buf, strlen(buf));
 							port = atoi(t.tokens[3]);
+							s1 = strdup(t.tokens[4]);
+							s2 = strdup(t.tokens[5]);
+							s3 = strdup(t.tokens[6]);
 							free_tokens(t);
-							if (run_server( port, NULL, NULL, NULL) != 0)
-								printf("Error: Cannot run server on port %s\n",
+
+							if (run_server( port, s1, s2, s3 ) != 0)
+								desc_printf(io, cfd, "Error: Cannot run SSL server on port %s\n",
 									t.tokens[1]);
 
 							write(fd[1], "ERR", 3);
+							free(s1);
+							free(s2);
+							free(s3);
 
 							exit(0);
 						}
@@ -504,177 +570,228 @@ int run_shell(void)
 						else
 							waitpid( atoi(buf), NULL, 0 );
 					}
-					else
-					if (strcmp(t.tokens[2], "https") == 0) {
-						if (t.numTokens < 7)
-							printf("Syntax: run server <http|https> <port> <private-key>"
-								"<public-key> <root-key>\n");
-						else {
-							int fd[2];
-							char buf[128] = { 0 };
-
-							pipe(fd);
-							if (fork() == 0) {
-								int port;
-								char *s1 = NULL;
-								char *s2 = NULL;
-								char *s3 = NULL;
-
-								snprintf(buf, sizeof(buf), "%d", (int)getpid());
-								close(fd[0]);
-								write(fd[1], buf, strlen(buf));
-								port = atoi(t.tokens[3]);
-								s1 = strdup(t.tokens[4]);
-								s2 = strdup(t.tokens[5]);
-								s3 = strdup(t.tokens[6]);
-								free_tokens(t);
-
-								if (run_server( port, s1, s2, s3 ) != 0)
-									printf("Error: Cannot run SSL server on port %s\n",
-										t.tokens[1]);
-
-								write(fd[1], "ERR", 3);
-								free(s1);
-								free(s2);
-								free(s3);
-
-								exit(0);
-							}
-
-							/* Try to wait to spawn server, if it fails we will know */
-							usleep(50000);
-
-							close(fd[1]);
-							read(fd[0], buf, sizeof(buf));
-							if (strstr(buf, "ERR") == NULL)
-								utils_pid_add( atoi(buf) );
-							else
-								waitpid( atoi(buf), NULL, 0 );
-						}
-					}
-					else
-						printf("Syntax: run server <http|https> <port> <params>\n");
 				}
-			}
-			else
-				printf("Run command options:\n\n"
-					"run server <http|https> <port> [<private-key> <public-key> <root-key>]"
-					"\t-Run HTTP/HTTPS server on specified port\n\n");
-
-			free_tokens(t);
-		}
-		else
-		if (strcmp(str, "stop") == 0) {
-			int ret;
-
-			ret = utils_pid_signal_all(SIGUSR1);
-			printf("Signal sent to %d process(es). Waiting for termination\n",
-				ret);
-			ret = utils_pid_wait_all();
-			printf("%d process(es) terminated\n", ret);
-		}
-		else
-		if (strcmp(str, "pwd") == 0) {
-			char buf[1024] = { 0 };
-
-			getcwd(buf, sizeof(buf));
-			puts(buf);
-		}
-		else
-		if (strcmp(str, "idbshell") == 0) {
-			idb_shell();
-
-			readline_init(READLINE_HISTORY_FILE_CDV);
-		}
-		else
-		if (strcmp(str, "time") == 0) {
-			char tmp[1024] = { 0 };
-
-			tse = utils_get_time( TIME_CURRENT );
-			fTm = get_time_float_us( tse, ts );
-
-			strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
-			printf("Current date/time is %s, current session time is %.3f s (%.3f min, %.3f hod)\n",
-				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
-		}
-		else
-		if (strncmp(str, "mime", 4) == 0) {
-			tTokenizer t = tokenize(str, " ");
-
-			if (t.numTokens == 2) {
-				char *tmp = NULL;
-
-				if ((tmp = get_mime_type(t.tokens[1])) == NULL)
-					printf("Error: Cannot get mime type for %s\n", t.tokens[1]);
 				else
-					printf("Mime type for %s is %s\n", t.tokens[1], tmp);
-
-				free(tmp);
+					desc_printf(io, cfd, "Syntax: run server <http|https> <port> <params>\n");
 			}
-			else
-				printf("Syntax: mime <filename>\n");
-
-			free_tokens(t);
 		}
 		else
-		if ((strncmp(str, "p", 1) == 0) || (strncmp(str, "print", 5) == 0)) {
-			tTokenizer t = tokenize(str, " ");
-			if (t.numTokens < 2) {
-				printf("Syntax:\tp <object>\n\tprint <object>\n"
-					"Example:\tspace.obj (for configuration variables)\n"
-					"\t\t//node/node2.name (for XML variables - load XML and dump it using \"dump xml\", then concatenate node with dot and name)\n");
-			}
+			desc_printf(io, cfd, "Run command options:\n\n"
+				"run server <http|https> <port> [<private-key> <public-key> <root-key>]"
+				"\t-Run HTTP/HTTPS server on specified port\n\n");
+
+		free_tokens(t);
+	}
+	else
+	if (strcmp(str, "stop") == 0) {
+		int ret;
+
+		ret = utils_pid_signal_all(SIGUSR1);
+		desc_printf(io, cfd, "Signal sent to %d process(es). Waiting for termination\n",
+			ret);
+		ret = utils_pid_wait_all();
+		desc_printf(io, cfd, "%d process(es) terminated\n", ret);
+	}
+	else
+	if (strcmp(str, "pwd") == 0) {
+		char buf[1024] = { 0 };
+
+		getcwd(buf, sizeof(buf));
+		write_common(io, cfd, buf, strlen(buf));
+		write_common(io, cfd, "\n", 1);
+	}
+	else
+	if (strncmp(str, "ls ", 3) == 0) {
+		DIR *d = NULL;
+		int num = 0;
+		char *dir = NULL;
+		struct dirent *entry;
+
+		dir = replace(str + 3, "%2F", "/");
+		dir = replace(dir, "%20", " ");
+		if (strcmp(dir, "~") == 0)
+			write_common(io, cfd, "Home directory disabled\n", 24);
+		else {
+			d = opendir(dir);
+			if (d == NULL)
+				desc_printf(io, cfd, "Cannot open directory '%s'\n", dir);
 			else {
-				tTokenizer t2 = tokenize(t.tokens[1], ".");
-				if (t2.numTokens < 2)
-					printf("Error: Invalid object for inspection\n");
-				else {
-					int i, found = 0;
-					char *cfg = NULL;
-					char tmp[512] = { 0 };
+				while ((entry = readdir(d)) != NULL) {
+					if (strlen(entry->d_name) > 0) {
+						write_common(io, cfd, entry->d_name,
+							strlen(entry->d_name));
+						write_common(io, cfd, "   ", 3);
 
-					for (i = 1; i < t2.numTokens; i++) {
-						strcat(tmp, t2.tokens[i]);
-
-						if (i < t2.numTokens - 1)
-							strcat(tmp, ".");
+						num++;
 					}
-
-					if ((cfg = config_get(t2.tokens[0], tmp)) != NULL) {
-						printf("Configuration variable %s value is: %s\n",
-							t.tokens[1], cfg);
-
-						found = 1;
-					}
-
-					free(cfg);
-
-					if (found == 0) {
-						int num = -1;
-						char **ret = xml_get_all(t.tokens[1], &num);
-
-						if ((num > 0) && (ret != NULL)) {
-							for (i = 0; i < num; i++)
-								printf("XML variable %s #%d value is: %s\n",
-									t.tokens[1], i + 1, ret[i]);
-						}
-
-						xml_free_all(ret, num);
-						found = (num > 0);
-					}
-
-					if (found == 0)
-						printf("No object %s found\n", t.tokens[1]);
 				}
-				free_tokens(t2);
+				closedir(d);
+
+				if (num == 0)
+					write_common(io, cfd, "No entry found", 15);
+
+				write_common(io, cfd, "\n", 1);
 			}
-			free_tokens(t);
+		}
+	}
+	else
+	if (strncmp(str, "cat ", 4) == 0) {
+		int fd;
+		char *path = NULL;
+
+		path = replace(str + 4, "%2F", "/");
+		path = replace(path, "%20", " ");
+
+		fd = open(path, O_RDONLY);
+		if (fd <= 0)
+			desc_printf(io, cfd, "Cannot open file %s", path);
+		else {
+			int len;
+			char buf[BUFSIZE] = { 0 };
+
+			while ((len = read(fd, buf, sizeof(buf))) > 0)
+				write_common(io, cfd, buf, len);
+
+			write_common(io, cfd, "\n", 1);
+			close(fd);
+		}
+	}
+	else
+	if (strcmp(str, "info") == 0) {
+		desc_printf(io, cfd, "Shell type is %s%s. Running under user %s (UID %d)",
+			SHELL_IS_REMOTE(io, cfd) ? "remote" : "local",
+			SHELL_OVER_SSL(io, cfd) ? " over SSL" : "",
+			getlogin(), getuid() );
+
+		if ((ua != NULL) && (host != NULL))
+			desc_printf(io, cfd, ". User agent is %s for host %s",
+				ua, host);
+
+		desc_printf(io, cfd, "\n");
+	}
+	else
+	if (strcmp(str, "idbshell") == 0) {
+		idb_shell(io, cfd);
+
+		readline_init(READLINE_HISTORY_FILE_CDV);
+	}
+	else
+	if (strcmp(str, "time") == 0) {
+		char tmp[1024] = { 0 };
+
+		tse = utils_get_time( TIME_CURRENT );
+		fTm = get_time_float_us( tse, ts );
+
+		strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
+		desc_printf(io, cfd, "Current date/time is %s, current session time is %.3f s (%.3f min, %.3f h)\n",
+			tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+	}
+	else
+	if (strncmp(str, "mime", 4) == 0) {
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens == 2) {
+			char *tmp = NULL;
+
+			if ((tmp = get_mime_type(t.tokens[1])) == NULL)
+				desc_printf(io, cfd, "Error: Cannot get mime type for %s\n", t.tokens[1]);
+			else
+				desc_printf(io, cfd, "Mime type for %s is %s\n", t.tokens[1], tmp);
+
+			free(tmp);
 		}
 		else
-		if (strlen(str) > 0)
-			printf("Error: Unknown command '%s'\n", str);
+			desc_printf(io, cfd, "Syntax: mime <filename>\n");
 
-		free(str);
+		free_tokens(t);
+	}
+	else
+	if ((strncmp(str, "p", 1) == 0) || (strncmp(str, "print", 5) == 0)) {
+		tTokenizer t = tokenize(str, " ");
+		if (t.numTokens < 2) {
+			desc_printf(io, cfd, "Syntax:\tp <object>\n\tprint <object>\n"
+				"Example:\tspace.obj (for configuration variables)\n"
+				"\t\t//node/node2.name (for XML variables - load XML and dump it using \"dump xml\", then concatenate node with dot and name)\n");
+		}
+		else {
+			tTokenizer t2 = tokenize(t.tokens[1], ".");
+			if (t2.numTokens < 2)
+				desc_printf(io, cfd, "Error: Invalid object for inspection\n");
+			else {
+				int i, found = 0;
+				char *cfg = NULL;
+				char tmp[512] = { 0 };
+
+				for (i = 1; i < t2.numTokens; i++) {
+					strcat(tmp, t2.tokens[i]);
+
+					if (i < t2.numTokens - 1)
+						strcat(tmp, ".");
+				}
+
+				if ((cfg = config_get(t2.tokens[0], tmp)) != NULL) {
+					desc_printf(io, cfd, "Configuration variable %s value is: %s\n",
+						t.tokens[1], cfg);
+
+					found = 1;
+				}
+
+				free(cfg);
+
+				if (found == 0) {
+					int num = -1;
+					char **ret = xml_get_all(t.tokens[1], &num);
+
+					if ((num > 0) && (ret != NULL)) {
+						for (i = 0; i < num; i++)
+							desc_printf(io, cfd, "XML variable %s #%d value is: %s\n",
+								t.tokens[1], i + 1, ret[i]);
+					}
+
+					xml_free_all(ret, num);
+					found = (num > 0);
+				}
+
+				if (found == 0)
+					desc_printf(io, cfd, "No object %s found\n", t.tokens[1]);
+			}
+			free_tokens(t2);
+		}
+		free_tokens(t);
+	}
+	else
+	if (strlen(str) > 0)
+		desc_printf(io, cfd, "Error: Unknown command '%s'\n", str);
+
+	free(str);
+
+	return ret;
+}
+
+int run_shell(BIO *io, int cfd)
+{
+	int ret = -EINVAL;
+	float fTm = -1;
+	struct timespec ts = utils_get_time( TIME_CURRENT );
+	struct timespec tse;
+
+	first_initialize();
+
+	if (cfd == STDIN)
+		readline_init(READLINE_HISTORY_FILE_CDV);
+
+	desc_printf(io, cfd, "\nCDV WebServer v%s shell\n", VERSION);
+	while (1) {
+		char *str = NULL;
+
+		if ((cfd == STDIN) && (io == NULL))
+			str = readline_read("(cdv) ");
+		else
+			str = desc_read(io, cfd);
+
+		ret = process_shell_command(ts, io, cfd, str, NULL, NULL);
+		if (ret == 1)
+			break;
 	}
 
 	if (_shell_project_loaded == 1) {
@@ -690,8 +807,9 @@ int run_shell(void)
 	utils_pid_signal_all(SIGUSR1);
 	utils_pid_wait_all();
 
-	DPRINTF("%s: Shell session time is %.3f s (%.3f min, %.3f hod)\n", __FUNCTION__,
+	DPRINTF("%s: Shell session time is %.3f s (%.3f min, %.3f h)\n", __FUNCTION__,
 		fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
 
 	return 0;
 }
+

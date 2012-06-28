@@ -28,6 +28,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+/* Stdin file descriptor */
+#define STDIN		1
+
 #ifdef USE_READLINE
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -139,6 +142,7 @@ char *basedir;
 tConfigVariable *configVars;
 int numConfigVars;
 int _shell_project_loaded;
+int _shell_enabled;
 FILE *_dump_fp;
 
 char *trim(char *str);
@@ -151,6 +155,9 @@ char *_shell_history_file;
 
 #define READLINE_HISTORY_FILE_CDV	"~/.cdv_history"
 #define READLINE_HISTORY_FILE_IDB	"~/.cdv_idb_history"
+
+#define SHELL_IS_REMOTE(io, fd)		(!((io == NULL) && (fd == STDIN)))
+#define SHELL_OVER_SSL(io, fd)		(SHELL_IS_REMOTE(io, fd) && (io != NULL))
 
 #define timespecsub(a, b, result)					\
 	do {								\
@@ -333,6 +340,8 @@ void project_dump(void);
 char *get_mime_type(char *path);
 int dump_set_file(char *filename);
 void dump_printf(const char *fmt, ...);
+void desc_printf(BIO *io, int fd, const char *fmt, ...);
+char *desc_read(BIO *io, int fd);
 int dump_file_is_set(void);
 void dump_unset_file(void);
 struct timespec utils_get_time(int diff);
@@ -341,6 +350,7 @@ void utils_pid_dump(void);
 int utils_pid_kill_all(void);
 int utils_pid_wait_all(void);
 int utils_pid_signal_all(int sig);
+char *replace(char *str, char *what, char *with);
 
 /* Project related options */
 void project_info_init(void);
@@ -387,6 +397,8 @@ unsigned char *wrap_mincrypt_base64_decode(unsigned char *in, size_t *size);
 void wrap_mincrypt_cleanup(void);
 
 /* Shell functions */
-int run_shell(void);
+int run_shell(BIO *io, int cfd);
+int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char *ua, char *path);
+int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str);
 
 #endif

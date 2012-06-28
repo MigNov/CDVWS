@@ -15,10 +15,10 @@ do { fprintf(stderr, "[cdv/utils       ] " fmt , args); } while (0)
 
 int first_initialize(void)
 {
-	/* Initialize dump file pointer to NULL */
 	_dump_fp = NULL;
 	_shell_project_loaded = 0;
 	_shell_history_file = NULL;
+	_shell_enabled = 0;
 	_pids = NULL;
 	_pids_num = 0;
 
@@ -340,6 +340,29 @@ void dump_unset_file(void)
 	_dump_fp = NULL;
 }
 
+
+char *replace(char *str, char *what, char *with)
+{
+	int size, idx;
+	char *new, *part, *old;
+
+	part = strstr(str, what);
+	if (part == NULL)
+		return str;
+
+	size = strlen(str) - strlen(what) + strlen(with);
+	new = (char *)malloc( size * sizeof(char) );
+	old = strdup(str);
+	idx = strlen(str) - strlen(part);
+	old[idx] = 0;
+	strcpy(new, old);
+	strcat(new, with);
+	strcat(new, part + strlen(what) );
+	part = NULL;
+	old = NULL;
+	return new;
+}
+
 void dump_printf(const char *fmt, ...)
 {
 	va_list ap;
@@ -349,6 +372,47 @@ void dump_printf(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	fputs( buf, (_dump_fp != NULL) ? _dump_fp : stdout);
 	va_end(ap);
+}
+
+void desc_printf(BIO *io, int fd, const char *fmt, ...)
+{
+	va_list ap;
+	char buf[8192] = { 0 };
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	//write(fd, buf, strlen(buf));
+	write_common(io, fd, buf, strlen(buf));
+	va_end(ap);
+}
+
+char *desc_read(BIO *io, int fd)
+{
+	int len, tlen;
+	char *ret = NULL;
+	char buf[1024] = { 0 };
+
+	tlen = 0;
+	ret = (char *)malloc( sizeof(char) );
+
+	if (io != NULL) {
+		while ((len = BIO_gets(io, buf, sizeof(buf))) > 0) {
+			tlen += len;
+			ret = (char *)realloc(buf, (tlen + 1) * sizeof(char));
+
+			strcat(ret, buf);
+		}
+	}
+	else {
+		while ((len = read(fd, buf, sizeof(buf))) > 0) {
+			tlen += len;
+			ret = (char *)realloc(buf, (tlen + 1) * sizeof(char));
+
+			strcat(ret, buf);
+		}
+	}
+
+	return ret;
 }
 
 int dump_file_is_set(void)
