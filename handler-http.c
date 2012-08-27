@@ -9,7 +9,7 @@ do { fprintf(stderr, "[cdv/http-handler] " fmt , ## __VA_ARGS__); } while (0)
 do {} while(0)
 #endif
 
-void http_host_header(BIO *io, int connected, int error_code, char *mt)
+void http_host_header(BIO *io, int connected, int error_code, char *mt, char *cookie)
 {
 	char tmp[TCP_BUF_SIZE] = { 0 };
 
@@ -37,12 +37,18 @@ void http_host_header(BIO *io, int connected, int error_code, char *mt)
 
 	strcat(tmp, "\nContent-Type: ");
 	strcat(tmp, mt);
+
+	if (cookie != NULL) {
+		strcat(tmp, "\nSet-Cookie: ");
+		strcat(tmp, cookie);
+	}
+
 	strcat(tmp, "\n\n");
 
 	write_common(io, connected, tmp, strlen(tmp));
 }
 
-int http_host_put_file(BIO *io, int connected, char *path)
+int http_host_put_file(BIO *io, int connected, char *path, char *cookies)
 {
 	int fd;
 	char tmp[TCP_BUF_SIZE] = { 0 };
@@ -54,7 +60,7 @@ int http_host_put_file(BIO *io, int connected, char *path)
 
 	mt = get_mime_type(path);
 	fd = open(path, O_RDONLY);
-	http_host_header(io, connected, HTTP_CODE_OK, mt);
+	http_host_header(io, connected, HTTP_CODE_OK, mt, cookies);
 	free(mt);
 
 	while ((len = read(fd, tmp, sizeof(tmp))) > 0)
@@ -117,6 +123,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	char *host = NULL;
 	char *path = NULL;
 	char *method = NULL;
+	char *cookie = NULL;
 
 	if ((len > 2) && (buf[len - 1] == '\n')) {
 		if (ssl == NULL)
@@ -152,6 +159,9 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		else
 		if (strncmp(t.tokens[i], "Host: ", 6) == 0)
 			host = strdup(t.tokens[i] + 6);
+		else
+		if (strncmp(t.tokens[i], "Cookie: ", 8) == 0)
+			cookie = strdup(t.tokens[i] + 8);
 
 		DPRINTF("%s: Line %d is '%s'\n", __FUNCTION__, i+1, t.tokens[i]);
 	}
@@ -165,6 +175,44 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
 
+	if (((cookie != NULL) && (strstr(cookie, "CDVCookie=") == NULL)) || (cookie == NULL)) {
+		char *tmp = NULL;
+		char cdvcookie[33] = { 0 };
+		char fn[1024] = { 0 };
+		char hex[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+		for (i = 0; i < 32; i++) {
+			srand(time(NULL) + i);
+			cdvcookie[i] = hex[rand() % strlen(hex)];
+		}
+
+		snprintf(fn, sizeof(fn), "/tmp/cdvdb-%s", cdvcookie);
+		while (access(fn, R_OK) == 0) {
+			for (i = 0; i < 32; i++) {
+				srand(time(NULL) + i);
+				cdvcookie[i] = hex[rand() % strlen(hex)];
+			}
+
+			snprintf(fn, sizeof(fn), "/tmp/cdvdb-%s", cdvcookie);
+		}
+
+		tmp = (char *)malloc( strlen("CDVCookie=;") + strlen(cdvcookie) );
+		sprintf(tmp, "CDVCookie=%s\n", cdvcookie);
+		cookie = tmp;
+
+		_cdv_cookie = strdup(cdvcookie);
+	}
+	else {
+		char *tmp = strstr(cookie, "CDVCookie=") + 10;
+
+		for (i = 0; i < strlen(tmp); i++) {
+			if ((tmp[i] == ';') || (tmp[i] == '\n'))
+				tmp[i] = 0;
+		}
+
+		_cdv_cookie = tmp;
+	}
+
 	/* First check if user requires shell access */
 	if (strncmp(path, "/shell", 6) == 0) {
 		/*
@@ -173,9 +221,8 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		*/
 
 		if (strncmp(path, "/shell@", 7) == 0) {
-			//char *str = strdup( path + 7 );
-
 			char *str = strdup( replace(replace(path + 7, "%20", " "), "%2F", "/") );
+			http_host_header(io, connected, HTTP_CODE_OK, "text/html", cookie);
 			if (strncmp(str, "idb-", 4) == 0)
 				process_idb_command(utils_get_time( TIME_CURRENT), io, connected, str + 4);
 			else
@@ -193,7 +240,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 				snprintf(loc, sizeof(loc), "%s%s", buf, path);
 
 			if (access(loc, R_OK) == 0)
-				return http_host_put_file(io, connected, loc);
+				return http_host_put_file(io, connected, loc, cookie);
 		}
 
 		return http_host_unknown(io, connected, "Internal WebShell");
@@ -213,7 +260,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			snprintf(loc, sizeof(loc), "%s/%s%s", tmp, dir, path);
 			DPRINTF("%s: Real file is '%s'\n", __FUNCTION__, loc);
 			if (access(loc, R_OK) == 0)
-				found = (http_host_put_file(io, connected, loc) != 0);
+				found = (http_host_put_file(io, connected, loc, cookie) != 0);
 			free(tmp);
 		}
 		free(dir);

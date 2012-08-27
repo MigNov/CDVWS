@@ -1907,6 +1907,70 @@ void idb_results_dump(tTableDataSelect tds)
 	dump_printf("======================\n");
 }
 
+
+void idb_results_show(BIO *io, int cfd, tTableDataSelect tds)
+{
+	long i = 0, j = 0;
+
+	if (tds.num_rows <= 0)
+		return;
+
+	for (i = 0; i < tds.rows[0].num_fields; i++) {
+		desc_printf(io, cfd, "+");
+		for (j = 0; j < 23; j++)
+			desc_printf(io, cfd, "-");
+	}
+	desc_printf(io, cfd, "+\n| ");
+
+	for (i = 0; i < tds.rows[0].num_fields; i++)
+		desc_printf(io, cfd, " %20s | ", tds.rows[0].tdi[i].name);
+	desc_printf(io, cfd, "\n");
+
+	for (i = 0; i < tds.rows[0].num_fields; i++) {
+		desc_printf(io, cfd, "+");
+		for (j = 0; j < 23; j++)
+			desc_printf(io, cfd, "-");
+	}
+	desc_printf(io, cfd, "+\n| ");
+
+	for (i = 0; i < tds.num_rows; i++) {
+		for (j = 0; j < tds.rows[i].num_fields; j++) {
+			switch (tds.rows[i].tdi[j].type) {
+				case IDB_TYPE_INT:
+					desc_printf(io, cfd, "%21d | ",
+						tds.rows[i].tdi[j].iValue);
+					break;
+				case IDB_TYPE_LONG:
+					desc_printf(io, cfd, "%21ld | ",
+						tds.rows[i].tdi[j].lValue);
+					break;
+				case IDB_TYPE_STR:
+					desc_printf(io, cfd, "%21s | ",
+						tds.rows[i].tdi[j].sValue);
+					break;
+				case IDB_TYPE_FILE:
+					desc_printf(io, cfd, "<%21ld bytes> | ",
+						tds.rows[i].tdi[j].cData_len);
+					break;
+				default:
+					desc_printf(io, cfd, "%21s | ", "UNKNOWN FIELD TYPE");
+					break;
+			}
+		}
+		desc_printf(io, cfd, "\n");
+
+		if (i < tds.num_rows - 1)
+			desc_printf(io, cfd, "| ");
+	}
+
+	for (i = 0; i < tds.rows[0].num_fields; i++) {
+		desc_printf(io, cfd, "+");
+		for (j = 0; j < 23; j++)
+			desc_printf(io, cfd, "-");
+	}
+	desc_printf(io, cfd, "+\n");
+}
+
 void idb_results_free(tTableDataSelect *tds)
 {
 	long i = 0, j = 0;

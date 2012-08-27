@@ -144,6 +144,7 @@ int numConfigVars;
 int _shell_project_loaded;
 int _shell_enabled;
 FILE *_dump_fp;
+char *_cdv_cookie;
 
 char *trim(char *str);
 int ensure_directory_existence(char *dir);
@@ -299,6 +300,7 @@ char *idb_get_filename(void);
 int idb_query(char *query);
 int idb_save(char *filename);
 void idb_results_dump(tTableDataSelect tds);
+void idb_results_show(BIO *io, int cfd, tTableDataSelect tds);
 void idb_results_free(tTableDataSelect *tds);
 int idb_load(char *filename);
 int idb_table_drop(char *table_name);
@@ -369,6 +371,7 @@ int module_load(char *libname);
 /* Xml stuff */
 int xml_init(void);
 int xml_load(char *xmlFile);
+int xml_load_opt(char *xmlFile, char *root);
 char **xml_get_all(char *nodename, int *oNum);
 void xml_free_all(char **ret, int num);
 int xml_query(char *xmlFile, char *xPath);

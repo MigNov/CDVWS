@@ -133,6 +133,24 @@ int xml_load(char *xmlFile) {
 	return 0;
 }
 
+int xml_load_opt(char *xmlFile, char *root)
+{
+	xmlDocPtr doc;
+
+	if (access(xmlFile, R_OK) != 0) {
+		fprintf(stderr, "Error: File %s doesn't exist or is not accessible for reading.\n", xmlFile);
+		return -ENOENT;
+	}
+
+	doc = xmlParseFile(xmlFile);
+	process_recursive(doc, root, 0, xmlFile);
+
+	xmlFreeDoc(doc);
+	xmlCleanupParser();
+
+	return 0;
+}
+
 int xml_query(char *xmlFile, char *xPath) {
 	xmlDocPtr doc;
 	int ret = 0;

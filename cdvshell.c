@@ -129,9 +129,35 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 	int ret;
 	float fTm = -1;
 	struct timespec tse;
+	char *autocommit_fn = NULL;
 
 	if (str == NULL)
 		return -EIO;
+
+	/* For the remote shell, we need to use CDV Cookie for data consistency */
+	if (SHELL_IS_REMOTE(io, cfd)) {
+		if (_cdv_cookie == NULL)
+			desc_printf(io, cfd, "I/O Error on CDV Cookie acquisition!\n");
+		else {
+			char fn[512] = { 0 };
+
+			snprintf(fn, sizeof(fn), "/tmp/cdvdb-%s", _cdv_cookie);
+			autocommit_fn = strdup(fn);
+
+			DPRINTF("%s: Setting up autocommit file name to %s\n", __FUNCTION__, autocommit_fn);
+
+			if (access(autocommit_fn, R_OK) == 0) {
+				char tmp[4096] = { 0 };
+				int ret;
+
+				snprintf(tmp, sizeof(tmp), "INIT %s", autocommit_fn);
+				ret = idb_query(tmp);
+
+				if (ret != 0)
+					desc_printf(io, cfd, "Data consistency error!\n");
+			}
+		}
+	}
 
 	if (((strlen(str) > 0) && (str[0] == -1))
 		|| (strcmp(str, "\\q") == 0)
@@ -186,10 +212,12 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 		tse = utils_get_time( TIME_CURRENT );
 		fTm = get_time_float_us( tse, ts );
 
-		/* TODO: Fix to calculate real time when spawned from run_shell() */
 		strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
-		desc_printf(io, cfd, "Current date/time is %s, current session time is %.3f s (%.3f min, %.3f h)\n",
-			tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+		if (SHELL_IS_REMOTE(io, cfd))
+			desc_printf(io, cfd, "Current server date/time is %s.\n", tmp);
+		else
+			desc_printf(io, cfd, "Current date/time is %s, current session time is %.3f s (%.3f min, %.3f h)\n",
+				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
 	}
 	else
 	if ((strncmp(str, "run", 3) == 0) || (strncmp(str, "\\.", 2) == 0)) {
@@ -238,6 +266,13 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 	}
 	else
 	if (strlen(str) > 0) {
+		while (strstr(str, "%20") != NULL)
+			str = replace(str, "%20", " ");
+		while (strstr(str, "%2C") != NULL)
+			str = replace(str, "%2C", ",");
+		while (strstr(str, "%3B") != NULL)
+			str = replace(str, "%3B", ";");
+
 		ret = idb_query(str);
 		if ((strcmp(str, "COMMIT") == 0) && (ret == -EINVAL)) {
 			/* File name is missing, ask for new file name */
@@ -253,11 +288,20 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 		}
 
 		if (strncmp(str, "SELECT", 6) == 0) {
-			idb_results_dump( idb_get_last_select_data() );
+			idb_results_show( io, cfd, idb_get_last_select_data() );
 			idb_free_last_select_data();
 		}
 
 		desc_printf(io, cfd, "Query '%s' returned with error code %d\n", str, ret);
+
+		if ((autocommit_fn != NULL) && (ret == 0)) {
+			char tmp2[4096] = { 0 };
+
+			snprintf(tmp2, sizeof(tmp2), "SET FILENAME %s", autocommit_fn);
+			idb_query(tmp2);
+
+			ret = idb_query("COMMIT");
+		}
 	}
 
 	return ret;
@@ -683,8 +727,12 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		fTm = get_time_float_us( tse, ts );
 
 		strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S", localtime(&tse.tv_sec));
-		desc_printf(io, cfd, "Current date/time is %s, current session time is %.3f s (%.3f min, %.3f h)\n",
-			tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
+
+		if (SHELL_IS_REMOTE(io, cfd))
+			desc_printf(io, cfd, "Current server date/time is %s.\n", tmp);
+		else
+			desc_printf(io, cfd, "Current date/time is %s, current session time is %.3f s (%.3f min, %.3f h)\n",
+				tmp, fTm / 1000000, fTm / 1000000 / 60., fTm / 1000000. / 3600.);
 	}
 	else
 	if (strncmp(str, "mime", 4) == 0) {

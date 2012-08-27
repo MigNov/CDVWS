@@ -21,6 +21,7 @@ int first_initialize(void)
 	_shell_enabled = 0;
 	_pids = NULL;
 	_pids_num = 0;
+	_cdv_cookie = NULL;
 
 	return 0;
 }
