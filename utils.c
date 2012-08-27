@@ -129,6 +129,23 @@ int ensure_directory_existence(char *dir)
 	}
 }
 
+char *generate_hex_chars(int len)
+{
+	char hex[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	char *tmp = NULL;
+	int i;
+
+	tmp = (char *)malloc( (len + 1) * sizeof(char) );
+	memset(tmp, 0, (len + 1) * sizeof(char));
+
+	for (i = 0; i < len; i++) {
+		srand(time(NULL) + i);
+		tmp[i] = hex[rand() % strlen(hex)];
+	}
+
+	return tmp;
+}
+
 int data_write(int fd, const void *data, size_t len, long *size)
 {
 	size_t sz;

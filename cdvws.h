@@ -148,6 +148,7 @@ char *_cdv_cookie;
 
 char *trim(char *str);
 int ensure_directory_existence(char *dir);
+char *generate_hex_chars(int len);
 float get_time_float_us(struct timespec ts, struct timespec te);
 char *_shell_history_file;
 
