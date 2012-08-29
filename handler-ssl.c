@@ -140,7 +140,8 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 
 		len = recv(s, buf, sizeof(buf), 0);
 
-		buf[len] = 0;
+		if (buf[len] != '>')
+			buf[len] = 0;
 		if (len == 0)
 			continue;
 

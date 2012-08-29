@@ -126,14 +126,16 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	char *cookie = NULL;
 
 	if ((len > 2) && (buf[len - 1] == '\n')) {
-		if (ssl == NULL)
-			buf[len - 2] = 0;
-		buf[len - 1] = 0;
-		if (ssl == NULL) {
-			len--;
+		if ((buf[len - 1] != '>') && (buf[len - 2] != '>')) {
+			if (ssl == NULL)
+				buf[len - 2] = 0;
 			buf[len - 1] = 0;
+			if (ssl == NULL) {
+				len--;
+				buf[len - 1] = 0;
+			}
+			len--;
 		}
-		len--;
 	}
 
 	DPRINTF("%s: Entering with following data '%s' (%d)\n", __FUNCTION__, buf, len);
