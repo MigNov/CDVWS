@@ -37,18 +37,21 @@ int _xmlrpc_vars_num;
 #define XMLRPC_TYPE_BASE64	0x05
 #define	XMLRPC_TYPE_STRUCT	0x06
 
-void xmlrpc_variable_dump(void)
+void xmlrpc_variable_dump(char *methodName)
 {
 	int i;
 
 	if (_xmlrpc_vars == NULL)
 		return;
 
+	if (methodName != NULL)
+		DPRINTF("XMLRPC Method name: %s\n", methodName);
+
 	DPRINTF("XMLRPC Variable dump\n");
 	for (i = 0; i < _xmlrpc_vars_num; i++) {
 		DPRINTF("Variable #%d:\n", i + 1);
 		DPRINTF("\tID: %d\n", _xmlrpc_vars[i].id);
-		DPRINTF("\tName: %s\n", _xmlrpc_vars[i].name);
+		DPRINTF("\tName: %s\n", _xmlrpc_vars[i].name ? _xmlrpc_vars[i].name : "<null>");
 		DPRINTF("\tID Parent: %d\n", _xmlrpc_vars[i].idParent);
 
 		if (_xmlrpc_vars[i].type == XMLRPC_TYPE_INT)
@@ -74,15 +77,34 @@ void xmlrpc_variable_dump(void)
 	}
 }
 
-void xmlrpc_put_tabs(int level)
+void xmlrpc_variable_free_all(void)
+{
+	int i;
+
+	if (_xmlrpc_vars == NULL)
+		return;
+
+	for (i = 0; i < _xmlrpc_vars_num; i++) {
+		_xmlrpc_vars[i].id = 0;
+		_xmlrpc_vars[i].idParent = 0;
+		_xmlrpc_vars[i].iValue = 0;
+		_xmlrpc_vars[i].shValue = 0;
+		free(_xmlrpc_vars[i].sValue);
+		_xmlrpc_vars[i].sValue = NULL;
+		_xmlrpc_vars[i].dValue = 0;
+	}
+	_xmlrpc_vars_num = 0;
+}
+
+void xmlrpc_put_tabs(char *tmp, int tmp_len, int level)
 {
 	int i;
 
 	for (i = 0; i < level; i++)
-		printf("\t");
+		asnprintf(tmp, tmp_len, "\t");
 }
 
-void xmlrpc_format_params(tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num, int idParent, int level)
+void xmlrpc_format_params(char *tmp, int tmp_len, tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num, int idParent, int level)
 {
 	int i;
 
@@ -91,81 +113,85 @@ void xmlrpc_format_params(tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num, int idP
 
 	for (i = 0; i < xmlrpc_vars_num; i++) {
 		if (xmlrpc_vars[i].idParent == idParent) {
-			xmlrpc_put_tabs(level);
+			xmlrpc_put_tabs(tmp, tmp_len, level);
 
 			if (level == 2) {
-				printf("<param>\n");
+				asnprintf(tmp, tmp_len, "<param>\n");
 
 				if (xmlrpc_vars[i].name != NULL) {
-					xmlrpc_put_tabs(level);
-					printf("\t<struct>\n");
-					xmlrpc_put_tabs(level);
-					printf("\t\t<member>\n");
-					xmlrpc_put_tabs(level);
-					printf("\t\t\t<name>%s</name>\n", xmlrpc_vars[i].name);
+					xmlrpc_put_tabs(tmp, tmp_len, level);
+					asnprintf(tmp, tmp_len, "\t<struct>\n");
+					xmlrpc_put_tabs(tmp, tmp_len, level);
+					asnprintf(tmp, tmp_len, "\t\t<member>\n");
+					xmlrpc_put_tabs(tmp, tmp_len, level);
+					asnprintf(tmp, tmp_len, "\t\t\t<name>%s</name>\n", xmlrpc_vars[i].name);
 					level += 2;
 				}
 			}
 			else {
-				printf("<member>\n");
-				xmlrpc_put_tabs(level);
-				printf("\t<name>%s</name>\n", xmlrpc_vars[i].name);
+				asnprintf(tmp, tmp_len, "<member>\n");
+				xmlrpc_put_tabs(tmp, tmp_len, level);
+				asnprintf(tmp, tmp_len, "\t<name>%s</name>\n", xmlrpc_vars[i].name);
 			}
 
-			xmlrpc_put_tabs(level);
-			printf("\t<value>");
+			xmlrpc_put_tabs(tmp, tmp_len, level);
+			asnprintf(tmp, tmp_len, "\t<value>");
 
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_INT)
-				printf("<int>%d</int>", xmlrpc_vars[i].iValue);
+				asnprintf(tmp, tmp_len, "<int>%d</int>", xmlrpc_vars[i].iValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_BOOL)
-				printf("<boolean>%d</boolean>", xmlrpc_vars[i].shValue);
+				asnprintf(tmp, tmp_len, "<boolean>%d</boolean>", xmlrpc_vars[i].shValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_STRING)
-				printf("<string>%s</string>", xmlrpc_vars[i].sValue);
+				asnprintf(tmp, tmp_len, "<string>%s</string>", xmlrpc_vars[i].sValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_DOUBLE)
-				printf("<double>%.f</double>", xmlrpc_vars[i].dValue);
+				asnprintf(tmp, tmp_len, "<double>%.f</double>", xmlrpc_vars[i].dValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_DATETIME)
-				printf("<datetime>not implemented yet</datetime>");
+				asnprintf(tmp, tmp_len, "<datetime>not implemented yet</datetime>");
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_BASE64)
-				printf("<base64>%s</base64>", xmlrpc_vars[i].sValue);
+				asnprintf(tmp, tmp_len, "<base64>%s</base64>", xmlrpc_vars[i].sValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_STRUCT) {
-				printf("\n");
-				xmlrpc_put_tabs(level);
-				printf("\t\t<struct>\n");
-				xmlrpc_format_params(xmlrpc_vars, xmlrpc_vars_num, xmlrpc_vars[i].id, level + 3);
-				xmlrpc_put_tabs(level + 2);
-				printf("</struct>\n\t");
-				xmlrpc_put_tabs(level);
+				asnprintf(tmp, tmp_len, "\n");
+				xmlrpc_put_tabs(tmp, tmp_len, level);
+				asnprintf(tmp, tmp_len, "\t\t<struct>\n");
+				xmlrpc_format_params(tmp, tmp_len, xmlrpc_vars, xmlrpc_vars_num, xmlrpc_vars[i].id, level + 3);
+				xmlrpc_put_tabs(tmp, tmp_len, level + 2);
+				asnprintf(tmp, tmp_len, "</struct>\n\t");
+				xmlrpc_put_tabs(tmp, tmp_len, level);
 			}
 
-			printf("</value>\n");
-			xmlrpc_put_tabs(level);
+			asnprintf(tmp, tmp_len, "</value>\n");
+			xmlrpc_put_tabs(tmp, tmp_len, level);
 
 			if ((level == 0) || (level == 2))
-				printf("</param>\n");
+				asnprintf(tmp, tmp_len, "</param>\n");
 			else
-				printf("</member>\n");
+				asnprintf(tmp, tmp_len, "</member>\n");
 		}
 	}
 
 	if (level == 4)
-		printf("\t\t\t</struct>\n\t\t</param>\n");
+		asnprintf(tmp, tmp_len, "\t\t\t</struct>\n\t\t</param>\n");
 }
 
-void xmlrpc_format_reply(tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num)
+char *xmlrpc_format_reply(tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num)
 {
-	printf("<?xml version=\"1.0\"?>\n");
-	printf("<methodResponse>\n");
+	char tmp[TCP_BUF_SIZE] = { 0 };
 
-	printf("\t<params>\n");
-	xmlrpc_format_params(xmlrpc_vars, xmlrpc_vars_num, 0, 2);
-	printf("\t<params>\n");
-	printf("</methodResponse>\n");
+	asnprintf(tmp, sizeof(tmp), "<?xml version=\"1.0\"?>\n");
+	asnprintf(tmp, sizeof(tmp), "<methodResponse>\n");
+
+	asnprintf(tmp, sizeof(tmp), "\t<params>\n");
+	xmlrpc_format_params(tmp, sizeof(tmp), xmlrpc_vars, xmlrpc_vars_num, 0, 2);
+	asnprintf(tmp, sizeof(tmp), "\t<params>\n");
+	asnprintf(tmp, sizeof(tmp), "</methodResponse>\n");
+
+	return strdup(tmp);
 }
 
 int xmlrpc_variable_add(char *type, char *data)
@@ -183,14 +209,11 @@ int xmlrpc_variable_add(char *type, char *data)
 	}
 
 	_xmlrpc_vars[_xmlrpc_vars_num].idParent = _xIdParent;
+	_xmlrpc_vars[_xmlrpc_vars_num].sValue = NULL;
 	if (_xlastElement != NULL)
 		_xmlrpc_vars[_xmlrpc_vars_num].name = strdup(_xlastElement);
-	else {
-		char tmp[16] = { 0 };
-		snprintf(tmp, sizeof(tmp), "%d", _xmlrpc_vars[_xmlrpc_vars_num].id);
-
-		_xmlrpc_vars[_xmlrpc_vars_num].name = strdup(tmp);
-	}
+	else
+		_xmlrpc_vars[_xmlrpc_vars_num].name = NULL;
 
 	if ((strcmp(type, "i4") == 0) || (strcmp(type, "int") == 0)) {
 		_xmlrpc_vars[_xmlrpc_vars_num].type = XMLRPC_TYPE_INT;
@@ -203,6 +226,13 @@ int xmlrpc_variable_add(char *type, char *data)
 	}
 	else
 	if (strcmp(type, "string") == 0) {
+		while (strstr(data, "<") != NULL)
+			data = replace(data, "<", "&lt;");
+		while (strstr(data, ">") != NULL)
+			data = replace(data, "<", "&gt;");
+		while (strstr(data, "&") != NULL)
+			data = replace(data, "&", "&amp;");
+
 		_xmlrpc_vars[_xmlrpc_vars_num].type = XMLRPC_TYPE_STRING;
 		_xmlrpc_vars[_xmlrpc_vars_num].sValue = strdup(data);
 	}
@@ -287,7 +317,7 @@ void xmlrpc_process_param(xmlDocPtr doc, xmlNodePtr node, int ignore_check, int 
 	}
 }
 
-int xmlrpc_parse(char *xml)
+char *xmlrpc_parse(char *xml)
 {
 	xmlParserCtxtPtr xp;
 	xmlDocPtr doc;
@@ -295,7 +325,8 @@ int xmlrpc_parse(char *xml)
 	xmlXPathObjectPtr result;
 	xmlNodeSetPtr nodeset;
 	char *methodName = NULL;
-	int i, ret = -EINVAL;
+	char *ret = NULL;
+	int i;
 
 	_xmlrpc_vars = NULL;
 	_xmlrpc_vars_num = 0;
@@ -308,19 +339,19 @@ int xmlrpc_parse(char *xml)
 	xp = xmlCreateDocParserCtxt( (xmlChar *)xml );
 	if (!xp) {
 		DPRINTF("Cannot create DocParserCtxt\n");
-		return -ENOMEM;
+		return NULL;
 	}
 
 	doc = xmlCtxtReadDoc(xp, (xmlChar *)xml, NULL, NULL, 0);
 	if (!doc) {
 		DPRINTF("Cannot get xmlDocPtr\n");
-		return -ENOMEM;
+		return NULL;
 	}
 
 	context = xmlXPathNewContext(doc);
 	if (!context) {
 		DPRINTF("Cannot get new XPath context\n");
-		return -ENOMEM;
+		return NULL;
 	}
 
 	result = xmlXPathEvalExpression( (xmlChar *)"//methodCall/methodName", context);
@@ -349,22 +380,46 @@ int xmlrpc_parse(char *xml)
 	result = xmlXPathEvalExpression( (xmlChar *)"//methodCall/params/param", context);
 	nodeset = result->nodesetval;
 
-	printf("METHOD NAME IS: %s\n", methodName);
 	for (i = 0; i < nodeset->nodeNr; i++) {
 	        xmlrpc_process_param(doc, nodeset->nodeTab[i], 0, 1);
 	}
 
-	xmlrpc_variable_dump();
-
-	//xmlrpc_format_params(0, 0);
-	xmlrpc_format_reply(_xmlrpc_vars, _xmlrpc_vars_num);
-
-	ret = 0;
+	ret = strdup(methodName);
 cleanup:
 	xmlXPathFreeObject(result);
 	xmlFreeDoc(doc);
 	xmlCleanupParser();
 
 	return ret;
+}
+
+tXmlRPCVars *xmlrpc_process_method(char *methodName, int *num_vars)
+{
+	DPRINTF("Processing method %s\n", methodName);
+
+	/* Bogus, just for testing (for now) */
+	if (num_vars != NULL)
+		*num_vars = _xmlrpc_vars_num;
+
+	return _xmlrpc_vars;
+}
+
+int xmlrpc_process(BIO *io, int fd, char *xml)
+{
+	tXmlRPCVars *xmlrpc_vars = NULL;
+	char *methodName = NULL;
+	int xmlrpc_varc = 0;
+	char *buf = NULL;
+
+	if ((methodName = xmlrpc_parse(xml)) == NULL)
+		return -EINVAL;
+
+	xmlrpc_vars = xmlrpc_process_method(methodName, &xmlrpc_varc);
+	buf = xmlrpc_format_reply(xmlrpc_vars, xmlrpc_varc);
+
+	write_common( io, fd, buf, strlen(buf) );
+	xmlrpc_variable_free_all();
+
+	return 0;
 }
 

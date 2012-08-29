@@ -356,6 +356,7 @@ void utils_pid_dump(void);
 int utils_pid_kill_all(void);
 int utils_pid_wait_all(void);
 int utils_pid_signal_all(int sig);
+void asnprintf(char *var, int var_len, const char *fmt, ...);
 char *replace(char *str, char *what, char *with);
 
 /* Project related options */
@@ -382,6 +383,9 @@ int xml_query(char *xmlFile, char *xPath);
 char *xml_get(char *basefile, char *node, char *name, char *value, char *out_value);
 void xml_dump(void);
 int xml_cleanup(void);
+
+/* XmlRPC related stuff */
+int xmlrpc_process(BIO *io, int fd, char *xml);
 
 /* General database stuff */
 char *database_format_query(char *xmlFile, char *table, char *type);

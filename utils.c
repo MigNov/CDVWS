@@ -392,6 +392,19 @@ void dump_printf(const char *fmt, ...)
 	va_end(ap);
 }
 
+void asnprintf(char *var, int var_len, const char *fmt, ...)
+{
+	va_list ap;
+	char buf[8192] = { 0 };
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	if ((strlen(var) + strlen(buf)) < var_len)
+		strcat(var, buf);
+}
+
 void desc_printf(BIO *io, int fd, const char *fmt, ...)
 {
 	va_list ap;
