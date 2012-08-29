@@ -28,6 +28,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <libxml/parser.h>
+#include <libxml/xpath.h>
+
 /* Stdin file descriptor */
 #define STDIN		1
 

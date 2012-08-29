@@ -4,8 +4,6 @@
 #define ROOT_ELEMENT_DEFS "//page-definition"
 
 #include "cdvws.h"
-#include <libxml/parser.h>
-#include <libxml/xpath.h>
 #define HAVE_DUMPS
 
 #ifdef DEBUG_XML
