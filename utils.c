@@ -194,6 +194,8 @@ void project_info_init(void)
 	project_info.cert_root = NULL;
 	project_info.cert_pk = NULL;
 	project_info.cert_pub = NULL;
+
+	project_info.path_xmlrpc = NULL;
 }
 
 void project_info_fill(void)
@@ -213,6 +215,8 @@ void project_info_fill(void)
 	project_info.cert_root = config_get("host", "certificate.root");
 	project_info.cert_pk = config_get("host", "certificate.private");
 	project_info.cert_pub = config_get("host", "certificate.public");
+
+	project_info.path_xmlrpc = config_get("host", "path.xmlrpc");
 
 	DPRINTF("%s: Project information structure set\n", __FUNCTION__);
 }
@@ -242,6 +246,11 @@ void project_info_dump(void)
 	if ((project_info.cert_pk != NULL) && (project_info.cert_pub != NULL)) {
 		dump_printf("\tHTTPS certificates: private '%s', public '%s'\n",
 			project_info.cert_pk, project_info.cert_pub);
+		num++;
+	}
+
+	if (project_info.path_xmlrpc != NULL) {
+		dump_printf("\tXMLRPC Path: %s\n", project_info.path_xmlrpc);
 		num++;
 	}
 
@@ -316,6 +325,8 @@ char *project_info_get(char *type)
 		return strdup(project_info.cert_pk);
 	if ((project_info.cert_pub != NULL) && (strcmp(type, "cert_pub") == 0))
 		return strdup(project_info.cert_pub);
+	if ((project_info.path_xmlrpc != NULL) && (strcmp(type, "path_xmlrpc") == 0))
+		return strdup(project_info.path_xmlrpc);
 
 	return NULL;
 }
@@ -336,6 +347,7 @@ void project_info_cleanup(void)
 	free(project_info.cert_root);
 	free(project_info.cert_pk);
 	free(project_info.cert_pub);
+	free(project_info.path_xmlrpc);
 
 	/* To set to NULLs */
 	project_info_init();

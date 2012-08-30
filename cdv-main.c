@@ -213,13 +213,37 @@ int main(int argc, char *argv[])
 		return run_shell( NULL, STDIN );
 
 	if ((argc > 1) && (strcmp(argv[1], "--test-xmlrpc") == 0)) {
-	        xmlrpc_process(NULL, STDIN, "<?xml version=\"1.0\"?><methodCall><methodName>namespace.method</methodName><params><param><value><int>41</int></value></param><param><value><string>str</string></value></param></params></methodCall>");
+	        printf("Test #1:\n%s\n", xmlrpc_process("<?xml version=\"1.0\"?><methodCall>"
+			"<methodName>namespace.method</methodName><params><param><value><int>41</int></value>"
+			"</param><param><value><string>str</string></value></param></params></methodCall>"));
 
-        	xmlrpc_process(NULL, STDIN, "<?xml version=\"1.0\"?><methodCall><methodName>namespace.method2</methodName><params><param><struct><member><name>lowerBound</name><value><i4>18</i4></value></member><member><name>upperBound</name><value><i4>139</i4></value></member></struct></param></params></methodCall>");
+		printf("Test #2:\n%s\n", xmlrpc_process("<?xml version=\"1.0\"?><methodCall>"
+			"<methodName>namespace.method2</methodName><params><param><struct><member><name>"
+			"lowerBound</name><value><i4>18</i4></value></member><member><name>upperBound</name>"
+			"<value><i4>139</i4></value></member></struct></param></params></methodCall>"));
 
-        	xmlrpc_process(NULL, STDIN, "<?xml version=\"1.0\"?><methodCall><methodName>namespace.method2b</methodName><params><param><struct><member><name>lowerBound</name><value><struct><member><name>member1</name><value><int>111</int></value></member><member><name>member2</name><value><string>string of member2</string></value></member></struct></value></member><member><name>upperBound</name><value><i4>139</i4></value></member><member><name>lowerBoundDDD</name><value><struct><member><name>member1b</name><value><int>1113</int></value></member><member><name>member2b</name><value><string>string of member2bb</string></value></member></struct></value></member></struct></param></params></methodCall>");
+		printf("Test #3:\n%s\n", xmlrpc_process("<?xml version=\"1.0\"?><methodCall>"
+			"<methodName>namespace.method3</methodName><params><param><struct><member>"
+			"<name>lowerBound</name><value><struct><member><name>member1</name><value>"
+			"<int>111</int></value></member><member><name>member2</name><value><string>"
+			"string of member2</string></value></member></struct></value></member><member>"
+			"<name>upperBound</name><value><i4>139</i4></value></member><member><name>something"
+			"</name><value><struct><member><name>member1b</name><value><int>1113</int></value>"
+			"</member><member><name>member2b</name><value><string>string of member2bb</string>"
+			"</value></member></struct></value></member></struct></param></params></methodCall>"));
 
-	        xmlrpc_process(NULL, STDIN, "<?xml version=\"1.0\"?><methodCall><methodName>namespace.method3</methodName><params><param><array><data><value><i4>12</i4></value><value><string>Egypt</string></value><value><boolean>0</boolean></value><value><i4>-31</i4></value></data></array></param></params></methodCall>");
+		printf("Test #4:\n%s\n", xmlrpc_process("<?xml version=\"1.0\"?><methodCall>"
+			"<methodName>namespace.method4</methodName><params><param><array><data><value>"
+			"<i4>12</i4></value><value><string>Egypt</string></value><value><boolean>0</boolean>"
+			"</value><value><i4>-31</i4></value></data></array></param></params></methodCall>"));
+
+		printf("Test #5:\n%s\n", xmlrpc_process("<?xml version='1.0'?><methodCall>"
+			"<methodName>test</methodName><params><param><value><struct><member><name>test</name>"
+			"<value><int>111</int></value></member></struct></value></param></params></methodCall>"));
+
+		printf("Test #6:\n%s\n", xmlrpc_process("<?xml version='1.0'?>\n<methodCall>\n"
+			"<methodName>test</methodName>\n<params>\n<param>\n<value><struct>\n<member>\n<name>test</name>\n"
+			"<value><int>111</int></value>\n</member>\n</struct></value>\n</param>\n</params>\n</methodCall>\n"));
 
 		return 1;
 	}

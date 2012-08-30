@@ -9,7 +9,7 @@ do { fprintf(stderr, "[cdv/http-handler] " fmt , ## __VA_ARGS__); } while (0)
 do {} while(0)
 #endif
 
-void http_host_header(BIO *io, int connected, int error_code, char *mt, char *cookie)
+void http_host_header(BIO *io, int connected, int error_code, char *mt, char *cookie, int len)
 {
 	char tmp[TCP_BUF_SIZE] = { 0 };
 
@@ -38,6 +38,14 @@ void http_host_header(BIO *io, int connected, int error_code, char *mt, char *co
 	strcat(tmp, "\nContent-Type: ");
 	strcat(tmp, mt);
 
+	if (len > 0) {
+		char cl[16] = { 0 };
+		snprintf(cl, sizeof(cl), "%d", len);
+
+		strcat(tmp, "\nContent-Length: ");
+		strcat(tmp, cl);
+	}
+
 	if (cookie != NULL) {
 		strcat(tmp, "\nSet-Cookie: ");
 		strcat(tmp, cookie);
@@ -60,7 +68,7 @@ int http_host_put_file(BIO *io, int connected, char *path, char *cookies)
 
 	mt = get_mime_type(path);
 	fd = open(path, O_RDONLY);
-	http_host_header(io, connected, HTTP_CODE_OK, mt, cookies);
+	http_host_header(io, connected, HTTP_CODE_OK, mt, cookies, 0);
 	free(mt);
 
 	while ((len = read(fd, tmp, sizeof(tmp))) > 0)
@@ -176,7 +184,6 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
-
 	if (((cookie != NULL) && (strstr(cookie, "CDVCookie=") == NULL)) || (cookie == NULL)) {
 		char *tmp = NULL;
 		char cdvcookie[33] = { 0 };
@@ -224,7 +231,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 
 		if (strncmp(path, "/shell@", 7) == 0) {
 			char *str = strdup( replace(replace(path + 7, "%20", " "), "%2F", "/") );
-			http_host_header(io, connected, HTTP_CODE_OK, "text/html", cookie);
+			http_host_header(io, connected, HTTP_CODE_OK, "text/html", cookie, 0);
 			if (strncmp(str, "idb-", 4) == 0)
 				process_idb_command(utils_get_time( TIME_CURRENT), io, connected, str + 4);
 			else
@@ -252,6 +259,39 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		return http_host_unknown(io, connected, host);
 
 	found = 0;
+
+	if (project_info_get("path_xmlrpc") != NULL) {
+		char *xmlrpc = project_info_get("path_xmlrpc");
+
+		DPRINTF("XMLRPC: '%s', PATH: '%s'\n", xmlrpc, path);
+		if (strcmp(xmlrpc, path) == 0) {
+			char *xml = strstr(buf, "\n<?xml");
+			if (xml == NULL) {
+				http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, "text/html", NULL, 0);
+				return 1;
+			}
+
+			*xml++;
+			DPRINTF("XML ISSSS: '%s'\n", xml);
+
+			if (xml[strlen(xml) - 1] == '\n')
+				xml[strlen(xml) - 1] = 0;
+
+			char *data = xmlrpc_process(xml);
+
+			if (data == NULL)
+				data = strdup("<?xml version=\"1.0\"?><methodResponse><fault><value><struct>"
+						"<member><name>faultCode</name><value><int>1</int></value></member>"
+						"<member><name>faultString</name><value><string>Invalid input data."
+						"</string></value></member></struct></value></fault></methodResponse>");
+
+			http_host_header(io, connected, HTTP_CODE_OK, "text/xml", NULL, strlen(data));
+			DPRINTF("Returning '%s'\n", data);
+			write_common(io, connected, data, strlen(data));
+			free(data);
+			return 1;
+		}
+	}
 
 	/* Then try to look for the file in files */
 	char *dir = NULL;

@@ -6,6 +6,7 @@ host.certificate.dir = certs
 host.certificate.root = rootcert.pem
 host.certificate.private = server-key.private
 host.certificate.public = server-key.pub
+host.path.xmlrpc = /xmlrpc
 
 # Project settings
 project.name = Article test project

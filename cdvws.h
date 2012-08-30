@@ -124,6 +124,7 @@ typedef struct tProjectInformation {
 	char *cert_root;
 	char *cert_pk;
 	char *cert_pub;
+	char *path_xmlrpc;
 } tProjectInformation;
 
 typedef struct tAttr {
@@ -385,7 +386,7 @@ void xml_dump(void);
 int xml_cleanup(void);
 
 /* XmlRPC related stuff */
-int xmlrpc_process(BIO *io, int fd, char *xml);
+char *xmlrpc_process(char *xml);
 
 /* General database stuff */
 char *database_format_query(char *xmlFile, char *table, char *type);

@@ -188,7 +188,7 @@ char *xmlrpc_format_reply(tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num)
 
 	asnprintf(tmp, sizeof(tmp), "\t<params>\n");
 	xmlrpc_format_params(tmp, sizeof(tmp), xmlrpc_vars, xmlrpc_vars_num, 0, 2);
-	asnprintf(tmp, sizeof(tmp), "\t<params>\n");
+	asnprintf(tmp, sizeof(tmp), "\t</params>\n");
 	asnprintf(tmp, sizeof(tmp), "</methodResponse>\n");
 
 	return strdup(tmp);
@@ -279,7 +279,7 @@ void xmlrpc_process_param(xmlDocPtr doc, xmlNodePtr node, int ignore_check, int 
 
 		if (data != NULL) {
 			if ((!ignore_check) && (!is_valid_data_type((char *)node->name)))
-				DPRINTF("Invalid data in %s\n", node->name);
+				DPRINTF("WARNING: Invalid data in %s\n", node->name);
 			else {
 				if (!((_xlastElement != NULL) && (strcmp(data, _xlastElement) == 0)))
 					xmlrpc_variable_add((char *)node->name, data);
@@ -335,6 +335,12 @@ char *xmlrpc_parse(char *xml)
 	_xlastElementNames_num = 0;
 
 	_xIdParent = 0;
+
+	/* We need to strip the new line characters as it's making issues */
+	while (strstr(xml, "\n") != NULL)
+		xml = replace(xml, "\n", "");
+
+	DPRINTF("Parsing XML:\n%s\n", xml);
 
 	xp = xmlCreateDocParserCtxt( (xmlChar *)xml );
 	if (!xp) {
@@ -404,7 +410,7 @@ tXmlRPCVars *xmlrpc_process_method(char *methodName, int *num_vars)
 	return _xmlrpc_vars;
 }
 
-int xmlrpc_process(BIO *io, int fd, char *xml)
+char *xmlrpc_process(char *xml)
 {
 	tXmlRPCVars *xmlrpc_vars = NULL;
 	char *methodName = NULL;
@@ -412,14 +418,12 @@ int xmlrpc_process(BIO *io, int fd, char *xml)
 	char *buf = NULL;
 
 	if ((methodName = xmlrpc_parse(xml)) == NULL)
-		return -EINVAL;
+		return NULL;
 
 	xmlrpc_vars = xmlrpc_process_method(methodName, &xmlrpc_varc);
 	buf = xmlrpc_format_reply(xmlrpc_vars, xmlrpc_varc);
-
-	write_common( io, fd, buf, strlen(buf) );
 	xmlrpc_variable_free_all();
 
-	return 0;
+	return strdup(buf);
 }
 
