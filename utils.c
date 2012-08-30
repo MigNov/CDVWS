@@ -13,12 +13,12 @@ do { fprintf(stderr, "[cdv/utils       ] " fmt , args); } while (0)
 #define DPRINTF(fmt, args...) do {} while(0)
 #endif
 
-int first_initialize(void)
+int first_initialize(int enabled)
 {
 	_dump_fp = NULL;
 	_shell_project_loaded = 0;
 	_shell_history_file = NULL;
-	_shell_enabled = 0;
+	_shell_enabled = enabled;
 	_pids = NULL;
 	_pids_num = 0;
 	_cdv_cookie = NULL;

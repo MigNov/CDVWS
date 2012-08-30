@@ -331,7 +331,7 @@ int definitions_load_directory(char *dir);
 int initialize(void);
 void cleanup(void);
 void total_cleanup(void);
-int first_initialize(void);
+int first_initialize(int enabled);
 tTokenizer tokenize(char *string, char *by);
 void free_tokens(tTokenizer t);
 char *trim(char *str);

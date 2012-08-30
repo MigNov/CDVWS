@@ -823,7 +823,7 @@ int run_shell(BIO *io, int cfd)
 	struct timespec ts = utils_get_time( TIME_CURRENT );
 	struct timespec tse;
 
-	first_initialize();
+	first_initialize(1);
 
 	if (cfd == STDIN)
 		readline_init(READLINE_HISTORY_FILE_CDV);

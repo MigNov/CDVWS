@@ -214,6 +214,7 @@ int main(int argc, char *argv[])
 		return run_shell( NULL, STDIN );
 	}
 
+	first_initialize(0);
 	if ((argc > 1) && (strcmp(argv[1], "--enable-remote-shell-only") == 0))
 		_shell_enabled = 1;
 
