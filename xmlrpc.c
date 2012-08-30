@@ -23,6 +23,7 @@ typedef struct tXmlRPCVars {
 	int iValue;
 	char *sValue;
 	double dValue;
+	long dtValue;
 	int idParent;
 } tXmlRPCVars;
 
@@ -67,10 +68,11 @@ void xmlrpc_variable_dump(char *methodName)
 			DPRINTF("\tValue: %.f (double)\n", _xmlrpc_vars[i].dValue);
 		else
 		if (_xmlrpc_vars[i].type == XMLRPC_TYPE_DATETIME)
-			DPRINTF("\tValue: <datetime>\n");
+			DPRINTF("\tValue: <datetime> timestamp = %ld, date/time = %s",
+				_xmlrpc_vars[i].dtValue, ctime(&_xmlrpc_vars[i].dtValue));
 		else
 		if (_xmlrpc_vars[i].type == XMLRPC_TYPE_BASE64)
-			DPRINTF("\tValue: <base64>\n");
+			DPRINTF("\tValue: %s <base64>\n", _xmlrpc_vars[i].sValue);
 		else
 		if (_xmlrpc_vars[i].type == XMLRPC_TYPE_STRUCT)
 			DPRINTF("\tValue: <struct>\n");
@@ -149,11 +151,45 @@ void xmlrpc_format_params(char *tmp, int tmp_len, tXmlRPCVars *xmlrpc_vars, int 
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_DOUBLE)
 				asnprintf(tmp, tmp_len, "<double>%.f</double>", xmlrpc_vars[i].dValue);
 			else
-			if (xmlrpc_vars[i].type == XMLRPC_TYPE_DATETIME)
-				asnprintf(tmp, tmp_len, "<datetime>not implemented yet</datetime>");
+			if (xmlrpc_vars[i].type == XMLRPC_TYPE_DATETIME) {
+				struct tm *tm;
+				char buf[256] = { 0 };
+
+				tm = localtime(&xmlrpc_vars[i].dtValue);
+				strftime(buf, sizeof(buf), "%Y%m%dT%X", tm);
+				asnprintf(tmp, tmp_len, "<datetime.iso8601>%s</datetime.iso8601>", buf);
+			}
 			else
-			if (xmlrpc_vars[i].type == XMLRPC_TYPE_BASE64)
-				asnprintf(tmp, tmp_len, "<base64>%s</base64>", xmlrpc_vars[i].sValue);
+			if (xmlrpc_vars[i].type == XMLRPC_TYPE_BASE64) {
+				int len = strlen(xmlrpc_vars[i].sValue);
+				char *xtmp = wrap_mincrypt_base64_encode((unsigned char *)
+						xmlrpc_vars[i].sValue, &len);
+
+				if (xtmp != NULL) {
+					asnprintf(tmp, tmp_len, "<base64>%s</base64>", xtmp);
+					free(xtmp);
+				}
+				else {
+					/* Try to use `base64` from coreutils package if it failed above */
+					if (xmlrpc_vars[i].sValue != NULL) {
+						char cmd[1024] = { 0 };
+						char s[1024] = { 0 };
+						FILE *fp;
+
+						snprintf(cmd, sizeof(cmd), "echo \"%s\" | tr -d \'\\n\' | base64", xmlrpc_vars[i].sValue);
+						fp = popen(cmd, "r");
+						fgets(s, 1024, fp);
+						fclose(fp);
+
+						if (s[strlen(s) - 1] == '\n')
+							s[strlen(s) - 1] = 0;
+
+						asnprintf(tmp, tmp_len, "<base64>%s</base64>", s);
+					}
+					else
+						asnprintf(tmp, tmp_len, "<base64></base64>");
+				}
+			}
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_STRUCT) {
 				asnprintf(tmp, tmp_len, "\n");
@@ -243,13 +279,62 @@ int xmlrpc_variable_add(char *type, char *data)
 	}
 	else
 	if (strcmp(type, "dateTime.iso8601") == 0) {
+		char tmp[4] = { 0 };
+		struct tm tm = { 0 };
+		time_t timeVal;
+
+		memset(tmp, 0, sizeof(tmp));
+		tmp[0] = data[0];
+		tmp[1] = data[1];
+		tmp[2] = data[2];
+		tmp[3] = data[3];
+		tm.tm_year = atoi(tmp) - 1900;
+
+		memset(tmp, 0, sizeof(tmp));
+		tmp[0] = data[4];
+		tmp[1] = data[5];
+		tm.tm_mon = atoi(tmp) - 1;
+
+		memset(tmp, 0, sizeof(tmp));
+		tmp[0] = data[6];
+		tmp[1] = data[7];
+		tm.tm_mday = atoi(tmp);
+
+		if (data[8] == 'T') {
+			memset(tmp, 0, sizeof(tmp));
+			tmp[0] = data[9];
+			tmp[1] = data[10];
+			tm.tm_hour = atoi(tmp);
+
+			memset(tmp, 0, sizeof(tmp));
+			tmp[0] = data[12];
+			tmp[1] = data[13];
+			tm.tm_min = atoi(tmp);
+
+			memset(tmp, 0, sizeof(tmp));
+			tmp[0] = data[15];
+			tmp[1] = data[16];
+			tm.tm_sec = atoi(tmp);
+		}
+
+		timeVal = mktime(&tm);
+
 		_xmlrpc_vars[_xmlrpc_vars_num].type = XMLRPC_TYPE_DATETIME;
-		printf("DATETIME: %s\n", data);
+		_xmlrpc_vars[_xmlrpc_vars_num].dtValue = (long)timeVal;
 	}
 	else
 	if (strcmp(type, "base64") == 0) {
+		int len = strlen(data);
+		char *tmp = wrap_mincrypt_base64_decode(data, &len);
+
+		if (tmp != NULL) {
+			free(data);
+			data = strdup(tmp);
+			free(tmp);
+		}
+
 		_xmlrpc_vars[_xmlrpc_vars_num].type = XMLRPC_TYPE_BASE64;
-		printf("BASE64 VALUE: %s\n", data);
+		_xmlrpc_vars[_xmlrpc_vars_num].sValue = strdup(data);
 	}
 	else
 	if (strcmp(type, "struct") == 0) {

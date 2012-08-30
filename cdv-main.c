@@ -236,7 +236,9 @@ int main(int argc, char *argv[])
 			"<name>upperBound</name><value><i4>139</i4></value></member><member><name>something"
 			"</name><value><struct><member><name>member1b</name><value><int>1113</int></value>"
 			"</member><member><name>member2b</name><value><string>string of member2bb</string>"
-			"</value></member></struct></value></member></struct></param></params></methodCall>"));
+			"</value></member><member><name>added</name><value><dateTime.iso8601>20120830T15:55:55"
+			"</dateTime.iso8601></value></member></struct></value></member><member><name>b64</name>"
+			"<value><base64>dmFsdWU=</base64></value></member></struct></param></params></methodCall>"));
 
 		printf("Test #4:\n%s\n", xmlrpc_process("<?xml version=\"1.0\"?><methodCall>"
 			"<methodName>namespace.method4</methodName><params><param><array><data><value>"
