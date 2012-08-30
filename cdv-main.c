@@ -209,8 +209,13 @@ int main(int argc, char *argv[])
 	int i = 1;
 
 	atexit( atex );
-	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0))
+	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0)) {
+		_shell_enabled = 1;
 		return run_shell( NULL, STDIN );
+	}
+
+	if ((argc > 1) && (strcmp(argv[1], "--enable-remote-shell-only") == 0))
+		_shell_enabled = 1;
 
 	if ((argc > 1) && (strcmp(argv[1], "--test-xmlrpc") == 0)) {
 	        printf("Test #1:\n%s\n", xmlrpc_process("<?xml version=\"1.0\"?><methodCall>"

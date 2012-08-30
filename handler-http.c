@@ -224,10 +224,8 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 
 	/* First check if user requires shell access */
 	if (strncmp(path, "/shell", 6) == 0) {
-		/*
 		if (_shell_enabled == 0)
 			return http_feature_disabled(io, connected, "Internal WebShell");
-		*/
 
 		if (strncmp(path, "/shell@", 7) == 0) {
 			char *str = strdup( replace(replace(path + 7, "%20", " "), "%2F", "/") );
@@ -259,11 +257,9 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		return http_host_unknown(io, connected, host);
 
 	found = 0;
-
 	if (project_info_get("path_xmlrpc") != NULL) {
 		char *xmlrpc = project_info_get("path_xmlrpc");
 
-		DPRINTF("XMLRPC: '%s', PATH: '%s'\n", xmlrpc, path);
 		if (strcmp(xmlrpc, path) == 0) {
 			char *xml = strstr(buf, "\n<?xml");
 			if (xml == NULL) {
@@ -272,8 +268,8 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			}
 
 			*xml++;
-			DPRINTF("XML ISSSS: '%s'\n", xml);
 
+			/* Fix because of issues */
 			if (xml[strlen(xml) - 1] == '\n')
 				xml[strlen(xml) - 1] = 0;
 
@@ -286,7 +282,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 						"</string></value></member></struct></value></fault></methodResponse>");
 
 			http_host_header(io, connected, HTTP_CODE_OK, "text/xml", NULL, strlen(data));
-			DPRINTF("Returning '%s'\n", data);
+			DPRINTF("Returning XMLRPC result: '%s'\n", data);
 			write_common(io, connected, data, strlen(data));
 			free(data);
 			return 1;
