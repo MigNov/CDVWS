@@ -116,11 +116,73 @@ int http_host_page_not_found(BIO *io, int connected, char *path)
 			"<b><u>%s</u></b> running on CDV WebServer v%s. Please contact "
 			"site administrator <a target=\"_blank\" href=\"mailto:%s\">%s</a>."
 			"<body></html>\n",
-				path, VERSION, project_info_get("name"),
+				path, project_info_get("name"), VERSION,
 				project_info_get("admin_mail"), project_info_get("admin_name"));
 
 	write_common(io, connected, tmp, strlen(tmp));
 	return 1;
+}
+
+void http_parse_data(char *data, int tp)
+{
+	tTokenizer t, t2;
+	char *name, *value;
+	int i;
+
+	if (data == NULL)
+		return;
+
+	t = tokenize(data, "&");
+	for (i = 0; i < t.numTokens; i++) {
+		name = NULL;
+		value = NULL;
+		t2 = tokenize(t.tokens[i], "=");
+		if (t2.numTokens == 2) {
+			name = strdup( t2.tokens[0] );
+			value = strdup( t2.tokens[1] );
+		}
+		free_tokens(t2);
+
+		if (strstr(name, "[]") != NULL) {
+			int idParent = -1;
+
+			name[ strlen(name) - 2 ] = 0;
+
+			if ((idParent = variable_lookup_name_idx(name, (tp == TYPE_QPOST) ? "post" : "get", idParent)) == -1)
+				idParent = variable_add(name, NULL, tp, -1, TYPE_ARRAY);
+
+			variable_add(NULL, value, tp, idParent, gettype(value));
+		}
+		else
+		if (strstr(name, "[") != NULL) {
+			int idParent = -1;
+			char *subname = strstr(name, "[") + 1;
+
+			subname[ strlen(subname) - 1 ] = 0;
+			name[strlen(name) - strlen(subname) - 1] = 0;
+
+			if ((idParent = variable_lookup_name_idx(name, (tp == TYPE_QPOST) ? "post" : "get", idParent)) == -1)
+				idParent = variable_add(name, NULL, tp, -1, TYPE_STRUCT);
+
+			variable_add(subname, value, tp, idParent, gettype(value));
+		}
+		else
+			variable_add(name, value, tp, -1, gettype(value));
+
+		free(name);
+		free(value);
+	}
+	free_tokens(t);
+
+	printf(">>> %s\n", variable_get_element_as_string("b.b", "get"));
+}
+
+void http_parse_data_getpost(char *get, char *post)
+{
+	http_parse_data(get, TYPE_QGET);
+	http_parse_data(post, TYPE_QPOST);
+
+	variable_dump();
 }
 
 int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len)
@@ -132,6 +194,8 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	char *path = NULL;
 	char *method = NULL;
 	char *cookie = NULL;
+	char *params_get = NULL;
+	char *params_post = NULL;
 
 	if ((len > 2) && (buf[len - 1] == '\n')) {
 		if ((buf[len - 1] != '>') && (buf[len - 2] != '>')) {
@@ -160,6 +224,12 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			if ((t2.numTokens == 3) && (strncmp(t2.tokens[2], "HTTP/", 5) == 0)) {
 				method = strdup( t2.tokens[0] );
 				path = strdup( t2.tokens[1] );
+
+				if (strstr(path, "?") != NULL) {
+					params_get = strdup( strstr(path, "?") + 1 );
+
+					path[ strlen(path) - strlen(params_get) - 1 ] = 0;
+				}
 			}
 			free_tokens(t2);
 		}
@@ -172,6 +242,18 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		else
 		if (strncmp(t.tokens[i], "Cookie: ", 8) == 0)
 			cookie = strdup(t.tokens[i] + 8);
+		if (strlen(t.tokens[i]) == 0) {
+			int j;
+
+			for (j = i + 1; j < t.numTokens; j++) {
+				char *tmp = cdvStringAppend(params_post, t.tokens[j]);
+
+				if (tmp != NULL) {
+					params_post = strdup(tmp);
+					free(tmp);
+				}
+			}
+		}
 
 		DPRINTF("%s: Line %d is '%s'\n", __FUNCTION__, i+1, t.tokens[i]);
 	}
@@ -289,6 +371,8 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		}
 	}
 
+	http_parse_data_getpost(params_get, params_post);
+
 	/* Then try to look for the file in files */
 	char *dir = NULL;
 	if ((dir = project_info_get("dir_files")) != NULL) {
@@ -302,6 +386,28 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			free(tmp);
 		}
 		free(dir);
+	}
+
+	/* Apply scripting only for .html requests for now - may be altered later */
+	if (strstr(path, ".html") != NULL) {
+		char *filename = replace(path, ".html", "");
+		if (filename != NULL) {
+			dir = project_info_get("dir_scripts");
+			if (dir != NULL) {
+				char *tmp = project_info_get("dir_root");
+				char loc[4096] = { 0 };
+				if (tmp != NULL) {
+					snprintf(loc, sizeof(loc), "%s/%s%s.cdv", tmp, dir, filename);
+					DPRINTF("%s: Script file is '%s'\n", __FUNCTION__, loc);
+					if (run_script(loc) != 0) {
+						http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, "text/html", NULL, 0);
+						return 1;
+					}
+
+					DPRINTF("%s: Script run successfully\n", __FUNCTION__);
+				}
+			}
+		}
 	}
 
 	/* TODO: Implement the CDV-code/script processing to use IDB and other features */

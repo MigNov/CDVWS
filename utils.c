@@ -22,6 +22,8 @@ int first_initialize(int enabled)
 	_pids = NULL;
 	_pids_num = 0;
 	_cdv_cookie = NULL;
+	_vars = NULL;
+	_vars_num = 0;
 
 	return 0;
 }
@@ -55,6 +57,8 @@ void cleanup(void)
 	definitions_cleanup();
 	config_free();
 	xml_cleanup();
+	variable_free_all();
+	regex_free();
 
 	#ifdef USE_INTERNAL_DB
 	idb_free();
@@ -187,6 +191,7 @@ void project_info_init(void)
 	project_info.dir_defs = NULL;
 	project_info.dir_views = NULL;
 	project_info.dir_files = NULL;
+	project_info.dir_scripts = NULL;
 
 	project_info.host_http = NULL;
 	project_info.host_secure = NULL;
@@ -196,6 +201,7 @@ void project_info_init(void)
 	project_info.cert_pub = NULL;
 
 	project_info.path_xmlrpc = NULL;
+	project_info.path_rewriter = NULL;
 }
 
 void project_info_fill(void)
@@ -208,6 +214,7 @@ void project_info_fill(void)
 	project_info.dir_defs = config_get("project", "config.directory.definitions");
 	project_info.dir_views = config_get("project", "config.directory.views");
 	project_info.dir_files = config_get("project", "config.directory.files");
+	project_info.dir_scripts = config_get("project", "config.directory.scripts");
 
 	project_info.host_http = config_get("host", "http");
 	project_info.host_secure = config_get("host", "secure");
@@ -217,6 +224,7 @@ void project_info_fill(void)
 	project_info.cert_pub = config_get("host", "certificate.public");
 
 	project_info.path_xmlrpc = config_get("host", "path.xmlrpc");
+	project_info.path_rewriter = config_get("host", "path.rewriter");
 
 	DPRINTF("%s: Project information structure set\n", __FUNCTION__);
 }
@@ -254,6 +262,11 @@ void project_info_dump(void)
 		num++;
 	}
 
+	if (project_info.path_rewriter != NULL) {
+		dump_printf("\tRewriter path: %s\n", project_info.path_rewriter);
+		num++;
+	}
+
 	dump_printf("\nProject information dump:\n");
 
 	if (project_info.name != NULL) {
@@ -288,6 +301,10 @@ void project_info_dump(void)
 		dump_printf("\tProject files dir: '%s'\n", project_info.dir_files);
 		num++;
 	}
+	if (project_info.dir_scripts != NULL) {
+		dump_printf("\tProject script files: '%s'\n", project_info.dir_scripts);
+		num++;
+	}
 
 	if (num == 0)
 		dump_printf("\tNo project data available\n");
@@ -313,6 +330,8 @@ char *project_info_get(char *type)
 		return strdup(project_info.dir_views);
 	if ((project_info.dir_files != NULL) && (strcmp(type, "dir_files") == 0))
 		return strdup(project_info.dir_files);
+	if ((project_info.dir_scripts != NULL) && (strcmp(type, "dir_scripts") == 0))
+		return strdup(project_info.dir_scripts);
 	if ((project_info.host_http != NULL) && (strcmp(type, "host_http") == 0))
 		return strdup(project_info.host_http);
 	if ((project_info.host_secure != NULL) && (strcmp(type, "host_secure") == 0))
@@ -327,6 +346,8 @@ char *project_info_get(char *type)
 		return strdup(project_info.cert_pub);
 	if ((project_info.path_xmlrpc != NULL) && (strcmp(type, "path_xmlrpc") == 0))
 		return strdup(project_info.path_xmlrpc);
+	if ((project_info.path_rewriter != NULL) && (strcmp(type, "path_rewriter") == 0))
+		return strdup(project_info.path_rewriter);
 
 	return NULL;
 }
@@ -341,6 +362,7 @@ void project_info_cleanup(void)
 	free(project_info.dir_defs);
 	free(project_info.dir_views);
 	free(project_info.dir_files);
+	free(project_info.dir_scripts);
 	free(project_info.host_http);
 	free(project_info.host_secure);
 	free(project_info.cert_dir);
@@ -348,6 +370,7 @@ void project_info_cleanup(void)
 	free(project_info.cert_pk);
 	free(project_info.cert_pub);
 	free(project_info.path_xmlrpc);
+	free(project_info.path_rewriter);
 
 	/* To set to NULLs */
 	project_info_init();
@@ -404,7 +427,7 @@ void dump_printf(const char *fmt, ...)
 	va_end(ap);
 }
 
-void asnprintf(char *var, int var_len, const char *fmt, ...)
+int cdvPrintfAppend(char *var, int max_len, const char *fmt, ...)
 {
 	va_list ap;
 	char buf[8192] = { 0 };
@@ -413,8 +436,56 @@ void asnprintf(char *var, int var_len, const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	if ((strlen(var) + strlen(buf)) < var_len)
+	if ((strlen(var) + strlen(buf)) < max_len) {
 		strcat(var, buf);
+		return strlen(var);
+	}
+
+	return -ENOSPC;
+}
+
+char *cdvStringAppend(char *var, char *val)
+{
+	int size;
+
+	if (var == NULL) {
+		size = (strlen(val) + 1) * sizeof(char);
+		var = (char *)malloc( size );
+		memset(var, 0, size);
+	}
+	else {
+		size = (strlen(var) + strlen(val) + 1) * sizeof(char);
+		var = (char *)realloc( var, size );
+	}
+
+	if (var == NULL)
+		return NULL;
+
+	strcat(var, val);
+	return var;
+}
+
+int is_numeric(char *val)
+{
+	int i, ok;
+
+	ok = 1;
+	for (i = 0; i < strlen(val); i++)
+		if ((val[i] < '0') || (val[i] > '9'))
+			ok = 0;
+
+	return ok;
+}
+
+int gettype(char *val)
+{
+	if (is_numeric(val))
+		return (atoi(val) == atol(val)) ? TYPE_INT : TYPE_LONG;
+
+	if ((strstr(val, ".") != NULL) || (strstr(val, ",") != NULL))
+		return TYPE_DOUBLE;
+
+	return TYPE_STRING;
 }
 
 void desc_printf(BIO *io, int fd, const char *fmt, ...)
@@ -424,7 +495,6 @@ void desc_printf(BIO *io, int fd, const char *fmt, ...)
 
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, ap);
-	//write(fd, buf, strlen(buf));
 	write_common(io, fd, buf, strlen(buf));
 	va_end(ap);
 }
@@ -747,6 +817,10 @@ char *trim(char *str)
         if (strchr(str, ' ') != NULL)
                 while (*str == ' ')
                         *str++;
+
+	if (strchr(str, '\t') != NULL)
+		while (*str == '\t')
+			*str++;
 
         for (i = strlen(str); i > 0; i--)
                 if (str[i] != ' ')

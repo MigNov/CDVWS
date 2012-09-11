@@ -1,7 +1,7 @@
 # Hosting settings
 # Just testing ports 2305 and 2306 are used for development
-host.http = localhost:2305
-host.secure = localhost:2306
+host.http = localhost:23050
+host.secure = localhost:23060
 host.certificate.dir = certs
 host.certificate.root = rootcert.pem
 host.certificate.private = server-key.private

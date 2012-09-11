@@ -6,6 +6,7 @@ host.certificate.root = rootcert.pem
 host.certificate.private = server-key.private
 host.certificate.public = server-key.pub
 host.path.xmlrpc = /xmlrpc
+host.path.rewriter = rewrite-rules.def
 
 # Project settings
 project.name = Test project
@@ -15,4 +16,5 @@ project.administrator.email = mignov@gmail.com
 # Project configuration
 project.config.file = config
 project.config.directory.definitions = definition
+project.config.directory.scripts = scripts
 project.config.directory.views = view

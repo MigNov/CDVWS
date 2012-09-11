@@ -7,6 +7,17 @@
 #define USE_INTERNAL_DB
 #define USE_SSL
 
+#define TYPE_INT	0x01
+#define TYPE_LONG	0x02
+#define TYPE_DOUBLE	0x04
+#define TYPE_STRING	0x08
+#define TYPE_ARRAY	0x10
+#define TYPE_STRUCT	0x20
+
+#define TYPE_QGET	0x01
+#define TYPE_QPOST	0x02
+#define TYPE_QSCRIPT	0x04
+
 #include <time.h>
 #include <stdio.h>
 #include <dlfcn.h>
@@ -27,6 +38,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
+#include <pcre.h>
 
 #include <libxml/parser.h>
 #include <libxml/xpath.h>
@@ -118,6 +131,7 @@ typedef struct tProjectInformation {
 	char *dir_defs;
 	char *dir_views;
 	char *dir_files;
+	char *dir_scripts;
 	char *host_http;
 	char *host_secure;
 	char *cert_dir;
@@ -125,6 +139,7 @@ typedef struct tProjectInformation {
 	char *cert_pk;
 	char *cert_pub;
 	char *path_xmlrpc;
+	char *path_rewriter;
 } tProjectInformation;
 
 typedef struct tAttr {
@@ -288,6 +303,31 @@ typedef void tTableDataSelect;
 #define GETWORD(var)	((var[1] << 8) + (var[0]))
 #define GETUINT32(var)	(uint32_t)(((uint32_t)var[3] << 24) + ((uint32_t)var[2] << 16) + ((uint32_t)var[1] << 8) + ((uint32_t)var[0]))
 
+typedef struct tVariables {
+	int id;
+	int type;
+	int q_type;
+	char *name;
+	int iValue;
+	long lValue;
+	char *sValue;
+	double dValue;
+	int idParent;
+} tVariables;
+
+tVariables *_vars;
+int _vars_num;
+
+/* Variable manipulation stuff */
+int variable_add(char *name, char *value, int q_type, int idParent, int type);
+int variable_lookup_name_idx(char *name, char *type, int idParent);
+void variable_dump(void);
+void variable_free_all(void);
+char *variable_get_element_as_string(char *el, char *type);
+
+/* Scripts */
+int run_script(char *filename);
+
 /* Internal database stuff */
 int idb_init(void);
 void idb_free(void);
@@ -357,8 +397,11 @@ void utils_pid_dump(void);
 int utils_pid_kill_all(void);
 int utils_pid_wait_all(void);
 int utils_pid_signal_all(int sig);
-void asnprintf(char *var, int var_len, const char *fmt, ...);
 char *replace(char *str, char *what, char *with);
+int cdvPrintfAppend(char *var, int max_len, const char *fmt, ...);
+char *cdvStringAppend(char *var, char *val);
+int gettype(char *val);
+int is_numeric(char *val);
 
 /* Project related options */
 void project_info_init(void);
@@ -387,6 +430,18 @@ int xml_cleanup(void);
 
 /* XmlRPC related stuff */
 char *xmlrpc_process(char *xml);
+
+/* RegEx stuff */
+int regex_parse(char *xmlFile);
+char *regex_get(char *expr);
+int regex_exists(char *expr);
+void regex_dump(void);
+void regex_free(void);
+int regex_get_idx(char *str);
+void regex_dump_matches(char **elements, int num_elems);
+void regex_free_matches(char **elements, int num_elems);
+char **regex_get_matches(char *str, int *num_matches);
+char *regex_format_new_string(char *str);
 
 /* General database stuff */
 char *database_format_query(char *xmlFile, char *table, char *type);

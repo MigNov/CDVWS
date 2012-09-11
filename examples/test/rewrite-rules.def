@@ -1,0 +1,4 @@
+<rewrite-rules>
+	<rule match="/article([^-]*)-([^.]*).html">/special-article.html?id=$1&amp;something=$2</rule>
+	<rule match="/article([^.]*).html">/article.html?id=$1</rule>
+</rewrite-rules>

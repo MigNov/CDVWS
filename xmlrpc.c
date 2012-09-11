@@ -103,7 +103,7 @@ void xmlrpc_put_tabs(char *tmp, int tmp_len, int level)
 	int i;
 
 	for (i = 0; i < level; i++)
-		asnprintf(tmp, tmp_len, "\t");
+		cdvPrintfAppend(tmp, tmp_len, "\t");
 }
 
 void xmlrpc_format_params(char *tmp, int tmp_len, tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num, int idParent, int level)
@@ -118,38 +118,38 @@ void xmlrpc_format_params(char *tmp, int tmp_len, tXmlRPCVars *xmlrpc_vars, int 
 			xmlrpc_put_tabs(tmp, tmp_len, level);
 
 			if (level == 2) {
-				asnprintf(tmp, tmp_len, "<param>\n");
+				cdvPrintfAppend(tmp, tmp_len, "<param>\n");
 
 				if (xmlrpc_vars[i].name != NULL) {
 					xmlrpc_put_tabs(tmp, tmp_len, level);
-					asnprintf(tmp, tmp_len, "\t<struct>\n");
+					cdvPrintfAppend(tmp, tmp_len, "\t<struct>\n");
 					xmlrpc_put_tabs(tmp, tmp_len, level);
-					asnprintf(tmp, tmp_len, "\t\t<member>\n");
+					cdvPrintfAppend(tmp, tmp_len, "\t\t<member>\n");
 					xmlrpc_put_tabs(tmp, tmp_len, level);
-					asnprintf(tmp, tmp_len, "\t\t\t<name>%s</name>\n", xmlrpc_vars[i].name);
+					cdvPrintfAppend(tmp, tmp_len, "\t\t\t<name>%s</name>\n", xmlrpc_vars[i].name);
 					level += 2;
 				}
 			}
 			else {
-				asnprintf(tmp, tmp_len, "<member>\n");
+				cdvPrintfAppend(tmp, tmp_len, "<member>\n");
 				xmlrpc_put_tabs(tmp, tmp_len, level);
-				asnprintf(tmp, tmp_len, "\t<name>%s</name>\n", xmlrpc_vars[i].name);
+				cdvPrintfAppend(tmp, tmp_len, "\t<name>%s</name>\n", xmlrpc_vars[i].name);
 			}
 
 			xmlrpc_put_tabs(tmp, tmp_len, level);
-			asnprintf(tmp, tmp_len, "\t<value>");
+			cdvPrintfAppend(tmp, tmp_len, "\t<value>");
 
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_INT)
-				asnprintf(tmp, tmp_len, "<int>%d</int>", xmlrpc_vars[i].iValue);
+				cdvPrintfAppend(tmp, tmp_len, "<int>%d</int>", xmlrpc_vars[i].iValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_BOOL)
-				asnprintf(tmp, tmp_len, "<boolean>%d</boolean>", xmlrpc_vars[i].shValue);
+				cdvPrintfAppend(tmp, tmp_len, "<boolean>%d</boolean>", xmlrpc_vars[i].shValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_STRING)
-				asnprintf(tmp, tmp_len, "<string>%s</string>", xmlrpc_vars[i].sValue);
+				cdvPrintfAppend(tmp, tmp_len, "<string>%s</string>", xmlrpc_vars[i].sValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_DOUBLE)
-				asnprintf(tmp, tmp_len, "<double>%.f</double>", xmlrpc_vars[i].dValue);
+				cdvPrintfAppend(tmp, tmp_len, "<double>%.f</double>", xmlrpc_vars[i].dValue);
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_DATETIME) {
 				struct tm *tm;
@@ -157,16 +157,16 @@ void xmlrpc_format_params(char *tmp, int tmp_len, tXmlRPCVars *xmlrpc_vars, int 
 
 				tm = localtime(&xmlrpc_vars[i].dtValue);
 				strftime(buf, sizeof(buf), "%Y%m%dT%X", tm);
-				asnprintf(tmp, tmp_len, "<datetime.iso8601>%s</datetime.iso8601>", buf);
+				cdvPrintfAppend(tmp, tmp_len, "<datetime.iso8601>%s</datetime.iso8601>", buf);
 			}
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_BASE64) {
-				int len = strlen(xmlrpc_vars[i].sValue);
-				char *xtmp = wrap_mincrypt_base64_encode((unsigned char *)
+				size_t len = strlen(xmlrpc_vars[i].sValue);
+				unsigned char *xtmp = wrap_mincrypt_base64_encode((unsigned char *)
 						xmlrpc_vars[i].sValue, &len);
 
 				if (xtmp != NULL) {
-					asnprintf(tmp, tmp_len, "<base64>%s</base64>", xtmp);
+					cdvPrintfAppend(tmp, tmp_len, "<base64>%s</base64>", xtmp);
 					free(xtmp);
 				}
 				else {
@@ -184,48 +184,48 @@ void xmlrpc_format_params(char *tmp, int tmp_len, tXmlRPCVars *xmlrpc_vars, int 
 						if (s[strlen(s) - 1] == '\n')
 							s[strlen(s) - 1] = 0;
 
-						asnprintf(tmp, tmp_len, "<base64>%s</base64>", s);
+						cdvPrintfAppend(tmp, tmp_len, "<base64>%s</base64>", s);
 					}
 					else
-						asnprintf(tmp, tmp_len, "<base64></base64>");
+						cdvPrintfAppend(tmp, tmp_len, "<base64></base64>");
 				}
 			}
 			else
 			if (xmlrpc_vars[i].type == XMLRPC_TYPE_STRUCT) {
-				asnprintf(tmp, tmp_len, "\n");
+				cdvPrintfAppend(tmp, tmp_len, "\n");
 				xmlrpc_put_tabs(tmp, tmp_len, level);
-				asnprintf(tmp, tmp_len, "\t\t<struct>\n");
+				cdvPrintfAppend(tmp, tmp_len, "\t\t<struct>\n");
 				xmlrpc_format_params(tmp, tmp_len, xmlrpc_vars, xmlrpc_vars_num, xmlrpc_vars[i].id, level + 3);
 				xmlrpc_put_tabs(tmp, tmp_len, level + 2);
-				asnprintf(tmp, tmp_len, "</struct>\n\t");
+				cdvPrintfAppend(tmp, tmp_len, "</struct>\n\t");
 				xmlrpc_put_tabs(tmp, tmp_len, level);
 			}
 
-			asnprintf(tmp, tmp_len, "</value>\n");
+			cdvPrintfAppend(tmp, tmp_len, "</value>\n");
 			xmlrpc_put_tabs(tmp, tmp_len, level);
 
 			if ((level == 0) || (level == 2))
-				asnprintf(tmp, tmp_len, "</param>\n");
+				cdvPrintfAppend(tmp, tmp_len, "</param>\n");
 			else
-				asnprintf(tmp, tmp_len, "</member>\n");
+				cdvPrintfAppend(tmp, tmp_len, "</member>\n");
 		}
 	}
 
 	if (level == 4)
-		asnprintf(tmp, tmp_len, "\t\t\t</struct>\n\t\t</param>\n");
+		cdvPrintfAppend(tmp, tmp_len, "\t\t\t</struct>\n\t\t</param>\n");
 }
 
 char *xmlrpc_format_reply(tXmlRPCVars *xmlrpc_vars, int xmlrpc_vars_num)
 {
 	char tmp[TCP_BUF_SIZE] = { 0 };
 
-	asnprintf(tmp, sizeof(tmp), "<?xml version=\"1.0\"?>\n");
-	asnprintf(tmp, sizeof(tmp), "<methodResponse>\n");
+	cdvPrintfAppend(tmp, sizeof(tmp), "<?xml version=\"1.0\"?>\n");
+	cdvPrintfAppend(tmp, sizeof(tmp), "<methodResponse>\n");
 
-	asnprintf(tmp, sizeof(tmp), "\t<params>\n");
+	cdvPrintfAppend(tmp, sizeof(tmp), "\t<params>\n");
 	xmlrpc_format_params(tmp, sizeof(tmp), xmlrpc_vars, xmlrpc_vars_num, 0, 2);
-	asnprintf(tmp, sizeof(tmp), "\t</params>\n");
-	asnprintf(tmp, sizeof(tmp), "</methodResponse>\n");
+	cdvPrintfAppend(tmp, sizeof(tmp), "\t</params>\n");
+	cdvPrintfAppend(tmp, sizeof(tmp), "</methodResponse>\n");
 
 	return strdup(tmp);
 }
@@ -324,12 +324,12 @@ int xmlrpc_variable_add(char *type, char *data)
 	}
 	else
 	if (strcmp(type, "base64") == 0) {
-		int len = strlen(data);
-		char *tmp = wrap_mincrypt_base64_decode(data, &len);
+		size_t len = strlen(data);
+		unsigned char *tmp = wrap_mincrypt_base64_decode((unsigned char *)data, &len);
 
 		if (tmp != NULL) {
 			free(data);
-			data = strdup(tmp);
+			data = strdup((const char *)tmp);
 			free(tmp);
 		}
 

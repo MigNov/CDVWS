@@ -255,6 +255,22 @@ int main(int argc, char *argv[])
 
 		return 1;
 	}
+	else
+	if ((argc > 1) && (strcmp(argv[1], "--test-rewrite-rules") == 0)) {
+		char *trans = NULL;
+		char str[] = "/article123-test.html";
+
+		regex_parse("./examples/test/rewrite-rules.def");
+		regex_dump();
+
+		printf("Regular Expression Match Testing\n");
+		printf("\tOriginal:\t%s\n", str);
+		trans = regex_format_new_string(str);
+		printf("\tTranslation:\t%s\n", trans ? trans : "<null>");
+		free(trans);
+
+		return 1;
+	}
 
 	run_servers(2305, 2306);
 
