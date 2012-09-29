@@ -15,8 +15,12 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 		_vars = (tVariables *)malloc( sizeof(tVariables) );
 		_vars_num = 0;
 	}
-	else
+	else {
+		if (variable_lookup_name_idx(name, NULL, idParent) != -1)
+			return -EEXIST;
+
 		_vars = (tVariables *)realloc( _vars, (_vars_num + 1) * sizeof(tVariables) );
+	}
 
 	if (_vars == NULL)
 		return -ENOMEM;
@@ -53,6 +57,43 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 	return _vars_num - 1;
 }
 
+int variable_get_type(char *el, char *type)
+{
+	tTokenizer t;
+	int i, id = -1;
+
+	t = tokenize(el, ".");
+	for (i = 0; i < t.numTokens; i++)
+		id = variable_lookup_name_idx(t.tokens[i], type, id);
+
+	if (id == -1)
+		return -EINVAL;
+
+	return _vars[id].type;
+}
+
+char *variable_get_type_string(char *el, char *type)
+{
+	int id = variable_get_type(el, type);
+
+	if (id < 0)
+		return NULL;
+
+	if (id == TYPE_INT)
+		return strdup("int");
+	else
+	if (id == TYPE_LONG)
+		return strdup("long");
+	else
+	if (id == TYPE_DOUBLE)
+		return strdup("double");
+	else
+	if (id == TYPE_STRING)
+		return strdup("string");
+	else
+		return strdup("unknown");
+}
+
 char *variable_get_element_as_string(char *el, char *type)
 {
 	tTokenizer t;
@@ -62,6 +103,10 @@ char *variable_get_element_as_string(char *el, char *type)
 	t = tokenize(el, ".");
 	for (i = 0; i < t.numTokens; i++)
 		id = variable_lookup_name_idx(t.tokens[i], type, id);
+
+	/* If there's no such variable then return null */
+	if (id == -1)
+		return NULL;
 
 	switch (_vars[id].type) {
 		case TYPE_INT: snprintf(val, sizeof(val), "%d", _vars[id].iValue);

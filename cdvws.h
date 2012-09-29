@@ -80,7 +80,11 @@ unsigned char *mincrypt_base64_decode(const char *in, size_t *size);
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+BIO *gIO;
+int gFd;
+
 typedef int (tProcessRequest)(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len);
+void script_set_descriptors(BIO *io, int fd);
 
 SSL_CTX *init_ssl_layer(char *private_key, char *public_key, char *root_key);
 int _sockets_done;
@@ -88,6 +92,11 @@ int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req);
 int _tcp_in_progress;
 char _tcp_buf[TCP_BUF_SIZE];
 int _tcp_total;
+#else
+void script_set_descriptors(void *io, int fd);
+
+void *gIO;
+int gFd;
 #endif
 
 #define	BUFSIZE		8192
@@ -324,9 +333,12 @@ int variable_lookup_name_idx(char *name, char *type, int idParent);
 void variable_dump(void);
 void variable_free_all(void);
 char *variable_get_element_as_string(char *el, char *type);
+int variable_get_type(char *el, char *type);
+char *variable_get_type_string(char *el, char *type);
 
 /* Scripts */
 int run_script(char *filename);
+void http_parse_data(char *data, int tp);
 
 /* Internal database stuff */
 int idb_init(void);
@@ -442,6 +454,7 @@ void regex_dump_matches(char **elements, int num_elems);
 void regex_free_matches(char **elements, int num_elems);
 char **regex_get_matches(char *str, int *num_matches);
 char *regex_format_new_string(char *str);
+int regex_match(char *expr, char *str);
 
 /* General database stuff */
 char *database_format_query(char *xmlFile, char *table, char *type);

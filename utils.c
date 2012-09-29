@@ -24,6 +24,8 @@ int first_initialize(int enabled)
 	_cdv_cookie = NULL;
 	_vars = NULL;
 	_vars_num = 0;
+	gIO = NULL;
+	gFd = -1;
 
 	return 0;
 }

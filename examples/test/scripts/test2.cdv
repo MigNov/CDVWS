@@ -1,5 +1,6 @@
 <$
 	x = get('b.a');
+	dumptype(x);
 
 	z = 34;
 

@@ -493,6 +493,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"set dumplog <filename>\t\t\t\t\t- set file for dump data (or '-' to write back to stdout)\n"
 			"set history-limit <max>\t\t\t\t\t- set history limit to <max> entries\n"
 			"clear history\t\t\t\t\t\t- clear history and history files\n"
+			"emulate <method> <data>\t\t\t\t\t- emulate GET or POST method data entry\n"
 			"\n"
 			"Testing functions:\n\n"
 			"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
@@ -520,6 +521,32 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		desc_printf(io, cfd, "History and history files cleared\n");
 	}
 	else
+	if (strncmp(str, "emulate", 7) == 0) {
+		int type = -1;
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens != 3) {
+			desc_printf(io, cfd, "Syntax: emulate <method> <data>\nMethod can be either GET or POST and data"
+				"can be any valid GET/POST data, i.e. without space\n");
+		}
+		else {
+			if ((strcmp(t.tokens[1], "get") == 0) || (strcmp(t.tokens[1], "GET") == 0))
+				type = TYPE_QGET;
+			else
+			if ((strcmp(t.tokens[1], "post") == 0) || (strcmp(t.tokens[1], "POST") == 0))
+				type = TYPE_QPOST;
+
+			if (type == -1)
+				desc_printf(io, cfd, "Type is unknown, allowed values are just GET and POST\n");
+			else {
+				http_parse_data(t.tokens[2], type);
+				desc_printf(io, cfd, "Emulation done\n");
+			}
+		}
+
+		free_tokens(t);
+	}
+	else
 	if (strncmp(str, "run", 3) == 0) {
 		tTokenizer t = tokenize(str, " ");
 
@@ -529,7 +556,23 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		if (strcmp(t.tokens[1], "help") == 0)
 			desc_printf(io, cfd, "Run command options:\n\n"
 				"run server <http|https> <port> [<private-key> <public-key> <root-key>]"
-				"\t-Run HTTP/HTTPS server on specified port\n\n");
+				"\t- Run HTTP/HTTPS server on specified port\n"
+				"run script <filename>\t\t\t\t\t\t\t- Run/process a script specified by <filename>\n\n");
+		else
+		if (strcmp(t.tokens[1], "script") == 0) {
+			tTokenizer t = tokenize(str, " ");
+
+			if (t.numTokens == 3) {
+				int ret;
+
+				ret = run_script(t.tokens[2]);
+				desc_printf(io, cfd, "Script %s processing finished with error code %d\n", t.tokens[2], ret);
+			}
+			else
+				desc_printf(io, cfd, "Syntax: run script <filename>\n");
+
+			free_tokens(t);
+		}
 		else
 		if (strcmp(t.tokens[1], "server") == 0) {
 			if (t.numTokens < 4)
@@ -827,6 +870,8 @@ int run_shell(BIO *io, int cfd)
 
 	if (cfd == STDIN)
 		readline_init(READLINE_HISTORY_FILE_CDV);
+
+	script_set_descriptors(io, cfd);
 
 	desc_printf(io, cfd, "\nCDV WebServer v%s shell\n", VERSION);
 	while (1) {
