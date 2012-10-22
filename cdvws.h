@@ -322,10 +322,14 @@ typedef struct tVariables {
 	char *sValue;
 	double dValue;
 	int idParent;
+
+	int allow_overwrite;
+	int deleted;
 } tVariables;
 
 tVariables *_vars;
 int _vars_num;
+int _var_overwrite;
 
 /* Variable manipulation stuff */
 int variable_add(char *name, char *value, int q_type, int idParent, int type);
@@ -335,10 +339,16 @@ void variable_free_all(void);
 char *variable_get_element_as_string(char *el, char *type);
 int variable_get_type(char *el, char *type);
 char *variable_get_type_string(char *el, char *type);
+int variable_allow_overwrite(char *name, int allow);
+int variable_get_overwrite(char *name);
+int variable_set_deleted(char *name, int is_deleted);
+int variable_get_deleted(char *name);
+int variable_get_idx(char *el, char *type);
 
 /* Scripts */
 int run_script(char *filename);
 void http_parse_data(char *data, int tp);
+int script_process_line(char *buf);
 
 /* Internal database stuff */
 int idb_init(void);
@@ -414,6 +424,7 @@ int cdvPrintfAppend(char *var, int max_len, const char *fmt, ...);
 char *cdvStringAppend(char *var, char *val);
 int gettype(char *val);
 int is_numeric(char *val);
+int get_boolean(char *val);
 
 /* Project related options */
 void project_info_init(void);

@@ -24,6 +24,7 @@ int first_initialize(int enabled)
 	_cdv_cookie = NULL;
 	_vars = NULL;
 	_vars_num = 0;
+	_var_overwrite = 0;
 	gIO = NULL;
 	gFd = -1;
 
@@ -75,6 +76,22 @@ void total_cleanup(void)
 		fclose(_dump_fp);
 		_dump_fp = NULL;
 	}
+}
+
+int get_boolean(char *val)
+{
+	if (val == NULL)
+		return -1;
+
+	if ((strcmp(val, "1") == 0)
+		|| (strcmp(val, "true") == 0))
+		return 1;
+
+	if ((strcmp(val, "0") == 0)
+		|| (strcmp(val, "false") == 0))
+		return 0;
+
+	return -1;
 }
 
 struct timespec utils_get_time(int diff)

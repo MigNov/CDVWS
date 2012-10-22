@@ -9,6 +9,107 @@ do { fprintf(stderr, "[cdv/variables   ] " fmt , args); } while (0)
 #define DPRINTF(fmt, args...) do {} while(0)
 #endif
 
+int variable_allow_overwrite(char *name, int allow)
+{
+	if ((allow != 0) && (allow != 1))
+		return -EINVAL;
+
+	DPRINTF("Calling %s(%s, %d)\n", __FUNCTION__, name, allow);
+
+	if (name == NULL)
+		_var_overwrite = allow;
+	else {
+		int idx = variable_get_idx(name, NULL);
+		if (idx < 0)
+			return -ENOENT;
+
+		_vars[idx].allow_overwrite = allow;
+	}
+
+	return 0;
+}
+
+int variable_get_overwrite(char *name)
+{
+	if (name == NULL)
+		return _var_overwrite;
+	else {
+		int idx = variable_get_idx(name, NULL);
+
+		if (idx < 0)
+			return -ENOENT;
+
+		if (_vars[idx].allow_overwrite == -1)
+			return _var_overwrite;
+		else
+			return _vars[idx].allow_overwrite;
+	}
+}
+
+int variable_set_deleted(char *name, int is_deleted)
+{
+	if (name == NULL)
+		return -EINVAL;
+
+	if ((is_deleted != 0) && (is_deleted != 1))
+		return -EINVAL;
+
+	int idx = variable_get_idx(name, NULL);
+	if (idx < 0)
+		return -ENOENT;
+
+	_vars[idx].deleted = is_deleted;
+	return 0;
+}
+
+int variable_get_deleted(char *name)
+{
+	if (name == NULL)
+		return 1;
+
+	int idx = variable_get_idx(name, NULL);
+	if (idx < 0)
+		return 1;
+
+	DPRINTF("Variable %s deleted: %d\n", name, _vars[idx].deleted);
+	return _vars[idx].deleted;
+}
+
+int variable_set(char *name, char *value, int q_type, int idParent, int type)
+{
+	int idx;
+
+	if ((idx = variable_lookup_name_idx(name, NULL, idParent))== -1)
+		return -ENOENT;
+
+        _vars[idx].iValue = 0;
+        _vars[idx].lValue = 0;
+	_vars[idx].dValue = 0.00;
+        _vars[idx].q_type = q_type;
+        _vars[idx].idParent = idParent;
+	_vars[idx].deleted = 0;
+
+	free(_vars[idx].sValue);
+	_vars[idx].sValue = NULL;
+
+	_vars[idx].type = type;
+
+	switch (type) {
+		case TYPE_INT: _vars[idx].iValue = atoi(value);
+				break;
+		case TYPE_LONG: _vars[idx].lValue = atol(value);
+				break;
+		case TYPE_DOUBLE: _vars[idx].dValue = atof( replace(value, ",", ".") );
+				break;
+		case TYPE_STRING: _vars[idx].sValue = strdup(value);
+				break;
+		default:
+				break;
+	}
+
+	return 0;
+}
+
 int variable_add(char *name, char *value, int q_type, int idParent, int type)
 {
 	if (_vars == NULL) {
@@ -16,8 +117,14 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 		_vars_num = 0;
 	}
 	else {
-		if (variable_lookup_name_idx(name, NULL, idParent) != -1)
-			return -EEXIST;
+		int idx;
+
+		if ((idx = variable_lookup_name_idx(name, NULL, idParent)) != -1) {
+			if ((variable_get_overwrite(name) == 0) && (variable_get_deleted(name) == 0))
+				return -EEXIST;
+
+			return (variable_set(name, value, q_type, idParent, type) == 0) ? idx : -1;
+		}
 
 		_vars = (tVariables *)realloc( _vars, (_vars_num + 1) * sizeof(tVariables) );
 	}
@@ -33,6 +140,8 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 	_vars[_vars_num].sValue = NULL;
 	_vars[_vars_num].q_type = q_type;
 	_vars[_vars_num].idParent = idParent;
+	_vars[_vars_num].deleted = 0;
+	_vars[_vars_num].allow_overwrite = -1;
 	if (name == NULL)
 		_vars[_vars_num].name = NULL;
 	else
@@ -57,7 +166,7 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 	return _vars_num - 1;
 }
 
-int variable_get_type(char *el, char *type)
+int variable_get_idx(char *el, char *type)
 {
 	tTokenizer t;
 	int i, id = -1;
@@ -65,8 +174,16 @@ int variable_get_type(char *el, char *type)
 	t = tokenize(el, ".");
 	for (i = 0; i < t.numTokens; i++)
 		id = variable_lookup_name_idx(t.tokens[i], type, id);
+	free_tokens(t);
 
-	if (id == -1)
+        return id;
+}
+
+int variable_get_type(char *el, char *type)
+{
+	int id = variable_get_idx(el, type);
+
+	if (id < 0)
 		return -EINVAL;
 
 	return _vars[id].type;
@@ -140,6 +257,9 @@ void variable_dump(void)
 		DPRINTF("\tVariable source: %s\n", (_vars[i].q_type == TYPE_QPOST) ? "POST Request" :
 			((_vars[i].q_type == TYPE_QGET) ? "GET Request" : "SCRIPT Processing"));
 		DPRINTF("\tName: %s\n", _vars[i].name ? _vars[i].name : "<null>");
+		DPRINTF("\tAllow overwrite: %d (local %d)\n", variable_get_overwrite(_vars[i].name),
+				 _vars[i].allow_overwrite);
+		DPRINTF("\tDeleted: %d\n", _vars[i].deleted);
 
 		if (_vars[i].type == TYPE_INT)
 			DPRINTF("\tValue: %d (int)\n", _vars[i].iValue);

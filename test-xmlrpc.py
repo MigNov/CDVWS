@@ -5,7 +5,7 @@ import xmlrpc.client
 proxy = xmlrpc.client.ServerProxy("http://localhost:2305/xmlrpc")
 
 try:
-    print("Result is: %s" % proxy.test({'test': 111}))
+    print("Result is: %s" % proxy.bug.test({'test': 111}))
 except xmlrpc.client.ProtocolError as err:
     print("A protocol error occurred")
     print("URL: %s" % err.url)

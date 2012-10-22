@@ -5,4 +5,15 @@
 	z = 34;
 
 	print(x);
+
+	print('Value of z is: ');
+	print(z);
+	print('\n');
+
+	printf("Value of z is: %s", z);
+
+	set_variables_overwritable(true);
+
+	z = 123;
+	print(z);
 $>

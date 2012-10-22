@@ -430,11 +430,15 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			if (strcmp(t.tokens[1], "xml") == 0)
 				xml_dump();
 			else
+			if (strcmp(t.tokens[1], "vars") == 0)
+				variable_dump();
+			else
 			if (strcmp(t.tokens[1], "help") == 0)
 				desc_printf(io, cfd, "Dump command help:\n\n"
 					"dump\t\t- dump both info and configuration\n"
 					"dump xml\t- dump XML information\n"
 					"dump info\t- dump project information only\n"
+					"dump vars\t- dump variables for the project\n"
 					"dump config\t- dump project configuration only\n\n"
 					"Internal shell options:\n\n"
 					"dump pids\t- dump server PIDs\n\n");
@@ -494,6 +498,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"set history-limit <max>\t\t\t\t\t- set history limit to <max> entries\n"
 			"clear history\t\t\t\t\t\t- clear history and history files\n"
 			"emulate <method> <data>\t\t\t\t\t- emulate GET or POST method data entry\n"
+			"eval <line>\t\t\t\t\t\t- evaluate the script line\n"
 			"\n"
 			"Testing functions:\n\n"
 			"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
@@ -519,6 +524,10 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		readline_unlink(READLINE_HISTORY_FILE_IDB);
 
 		desc_printf(io, cfd, "History and history files cleared\n");
+	}
+	else
+	if (strncmp(str, "eval ", 5) == 0) {
+		desc_printf(io, cfd, "Expression evaluation returned error code %d\n", script_process_line(str + 5));
 	}
 	else
 	if (strncmp(str, "emulate", 7) == 0) {
@@ -809,6 +818,16 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			if (t2.numTokens < 2)
 				desc_printf(io, cfd, "Error: Invalid object for inspection\n");
 			else {
+				if (strcmp(t2.tokens[0], "vars") == 0) {
+					char *var = variable_get_element_as_string(t2.tokens[1], NULL);
+
+					desc_printf(io, cfd, "%s\n", var ? var : "No value found");
+
+					free(var);
+					free(str);
+					return 0;
+				}
+
 				int i, found = 0;
 				char *cfg = NULL;
 				char tmp[512] = { 0 };

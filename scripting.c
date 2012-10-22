@@ -11,6 +11,64 @@ do { fprintf(stderr, "[cdv/scripting   ] " fmt , args); } while (0)
 
 int _script_builtin_function(char *var, char *fn, char *args)
 {
+	if (strcmp(fn, "set_variables_overwritable") == 0) {
+		if (args != NULL) {
+			int var = get_boolean(args);
+
+			if ((var == 0) || (var == 1))
+				variable_allow_overwrite(NULL, var);
+			else
+				desc_printf(gIO, gFd, "Invalid value for %s(): %s\n",
+					__FUNCTION__, args);
+		}
+	}
+	else
+	if (strcmp(fn, "get_variables_overwritable") == 0) {
+		if (var != NULL) {
+			char tmp[4] = { 0 };
+			snprintf(tmp, sizeof(tmp), "%d", variable_get_overwrite(NULL));
+			variable_add(var, tmp, TYPE_QSCRIPT, -1, TYPE_INT);
+		}
+		else
+			desc_printf(gIO, gFd, "Variable overwritable: %s\n",
+				(variable_get_overwrite(NULL) == 1) ? "true" : "false");
+	}
+	else
+	if (strcmp(fn, "set_variable_overwritable") == 0) {
+		int i;
+		tTokenizer t;
+
+		t = tokenize(args, ",");
+		if (t.numTokens == 2)
+			variable_allow_overwrite(trim(t.tokens[0]), get_boolean(t.tokens[1]));
+		else
+			desc_printf(gIO, gFd, "Syntax: set_variable_overwritable(variable, true|false)\n");
+
+		free_tokens(t);
+	}
+	else
+	if (strcmp(fn, "get_variable_overwritable") == 0) {
+		char tmp[4] = { 0 };
+
+		if ((args != NULL) && (strlen(args) > 0))
+		{
+			snprintf(tmp, sizeof(tmp), "%d", variable_get_overwrite(args));
+
+			if (var != NULL)
+				variable_add(var, tmp, TYPE_QSCRIPT, -1, TYPE_INT);
+			else
+				desc_printf(gIO, gFd, "Variable %s overwritable: %s\n",
+					args, (strcmp(tmp, "1") == 0) ? "true" :
+					((strcmp(tmp, "0") == 0) ? "false" : "not found"));
+		}
+		else
+			desc_printf(gIO, gFd, "Variable name is missing\n");
+	}
+	else
+	if (strcmp(fn, "del") == 0) {
+		variable_set_deleted(args, 1);
+	}
+	else
 	if (strcmp(fn, "get") == 0) {
 		char *val = variable_get_element_as_string(args, "get");
 
@@ -38,15 +96,25 @@ int _script_builtin_function(char *var, char *fn, char *args)
 	if (strcmp(fn, "dumptype") == 0) {
 		char *str = variable_get_type_string(args, "any");
 
-		desc_printf(gIO, gFd, "Dump type is: %s\n", str ? str : "<null>");
+		desc_printf(gIO, gFd, "%s\n", str ? str : "<null>");
 		free(str);
 	}
 	else
 	if (strcmp(fn, "print") == 0) {
-		DPRINTF("%s: Value to print is %s\n", __FUNCTION__, args);
+		if (args != NULL) {
+			if ((args[0] == '"') || (args[0] == '\'')) {
+				*args++;
+				args[strlen(args) - 1] = 0;
 
-		/* TODO: Needs to be fixed! */
-		desc_printf(gIO, gFd, "%s", args);
+				args = replace(args, "\\n", "\n");
+				desc_printf(gIO, gFd, "%s", args);
+			}
+			else {
+				char *var = variable_get_element_as_string(args, NULL);
+				desc_printf(gIO, gFd, "%s", var ? var : "");
+				free(var);
+			}
+		}
 	}
 	else
 		return -EINVAL;
@@ -56,6 +124,8 @@ int _script_builtin_function(char *var, char *fn, char *args)
 
 int script_process_line(char *buf)
 {
+	int ret = -ENOTSUP;
+
 	/* Comparison */
 	if (strstr(buf, "==") != NULL) {
 		DPRINTF("%s: Comparison found\n", __FUNCTION__);
@@ -63,21 +133,23 @@ int script_process_line(char *buf)
 	else
 	/* Assignment */
 	if (strstr(buf, "=") != NULL) {
-		int i;
 		tTokenizer t;
 
 		DPRINTF("%s: Assignment found\n", __FUNCTION__);
 
 		t = tokenize(buf, "=");
-
-		// variable_name = t.tokens[0];
-		// variable_value = t.tokens[1];
 		char *val = strdup( trim(t.tokens[1]) );
 		if (val[strlen(val) - 1] == ';') {
 			val[strlen(val) - 1] = 0;
 
-			if (is_numeric(val))
-				variable_add(trim(t.tokens[0]), val, TYPE_QSCRIPT, -1, gettype(val));
+			if (is_numeric(val)) {
+				if (variable_add(trim(t.tokens[0]), val, TYPE_QSCRIPT, -1, gettype(val)) < 0) {
+					desc_printf(gIO, gFd, "Cannot set new value to variable %s\n", trim(t.tokens[0]));
+					ret = -EIO;
+				}
+				else
+					ret = 0;
+			}
 			else
 			if (regex_match("([^(]*)([^)]*)", val)) {
 				tTokenizer t2;
@@ -110,11 +182,11 @@ int script_process_line(char *buf)
 				DPRINTF("%s: Should be a function with return value\n", __FUNCTION__);
 				free(args);
 				free(fn);
-			}
 
-			for (i = 0; i < t.numTokens; i++) {
-				DPRINTF("%d. %s\n", i + 1, trim(t.tokens[i]));
+				ret = 0;
 			}
+			else
+				ret = -EINVAL;
 		}
 
 		free_tokens(t);
@@ -146,12 +218,13 @@ int script_process_line(char *buf)
 
 		free(args);
 		free(fn);
-		DPRINTF("%s: Should be a function with ignoring/without return value\n", __FUNCTION__);
+
+		ret = 0;
 	}
 	else
 		DPRINTF("%s: Not implemented yet\n", __FUNCTION__);
 
-	return -ENOTSUP;
+	return ret;
 }
 
 int run_script(char *filename)
