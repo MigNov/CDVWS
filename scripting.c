@@ -164,6 +164,12 @@ int script_process_line(char *buf)
 {
 	int ret = -ENOTSUP;
 
+	/* Skip if it's a one line comment (more to be implemented) */
+	if (is_comment(buf) == 1) {
+		DPRINTF("%s: Found comment, skipping\n", __FUNCTION__);
+		return 0;
+	}
+
 	/* Comparison */
 	if (strstr(buf, "==") != NULL) {
 		DPRINTF("%s: Comparison found\n", __FUNCTION__);

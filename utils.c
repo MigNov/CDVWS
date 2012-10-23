@@ -88,11 +88,11 @@ int get_boolean(char *val)
 
 	val2 = trim(val);
 	if ((strcmp(val2, "1") == 0)
-		|| (strcmp(val, "true") == 0))
+		|| (strcmp(val2, "true") == 0))
 		ret = 1;
 	else
 	if ((strcmp(val2, "0") == 0)
-		|| (strcmp(val, "false") == 0))
+		|| (strcmp(val2, "false") == 0))
 		ret = 0;
 	free(val2);
 
@@ -511,6 +511,37 @@ int is_string(char *val)
 		return 1;
 
 	return 0;
+}
+
+/*
+ * Gets information whether it's a comment or not
+ * Returns: 0 for not a comment, 1 for one line comment
+ * 		2 for open comment, 3 for close comment
+ */
+int is_comment(char *val)
+{
+	int i;
+	int num = 0;
+	int numA = 0;
+
+	if ((val == NULL) || (strlen(val) == 0))
+		return 0;
+
+	for (i = 0; i < strlen(val); i++) {
+		if (val[i] == '/')
+			num++;
+		else
+		if (val[i] == '*')
+			numA++;
+		else
+		if ((val[i] == '*') && (num == 1))
+			return 2;
+		else
+		if ((val[i] == '/') && (numA == 1))
+			return 3;
+	}
+
+	return (num == 2);
 }
 
 int gettype(char *val)

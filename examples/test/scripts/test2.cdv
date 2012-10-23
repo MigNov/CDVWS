@@ -13,8 +13,10 @@
 
 	printf("Value of z is: %s, a: %s\n", z, a);
 
-	set_all_variables_overwritable(true);
+	//set_all_variables_overwritable(true);
 
+	z = 123;
+	del(z);
 	z = 123;
 	printf("Value of z is: %s\n", z);
 $>
