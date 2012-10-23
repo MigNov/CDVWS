@@ -80,18 +80,23 @@ void total_cleanup(void)
 
 int get_boolean(char *val)
 {
+	int ret = -1;
+	char *val2 = NULL;
+
 	if (val == NULL)
 		return -1;
 
-	if ((strcmp(val, "1") == 0)
+	val2 = trim(val);
+	if ((strcmp(val2, "1") == 0)
 		|| (strcmp(val, "true") == 0))
-		return 1;
-
-	if ((strcmp(val, "0") == 0)
+		ret = 1;
+	else
+	if ((strcmp(val2, "0") == 0)
 		|| (strcmp(val, "false") == 0))
-		return 0;
+		ret = 0;
+	free(val2);
 
-	return -1;
+	return ret;
 }
 
 struct timespec utils_get_time(int diff)
@@ -494,6 +499,18 @@ int is_numeric(char *val)
 			ok = 0;
 
 	return ok;
+}
+
+int is_string(char *val)
+{
+	if ((val == NULL) || (strlen(val) == 0))
+		return 0;
+
+	if (((val[0] == '\'') || (val[0] == '"'))
+		&& ((val[strlen(val) - 1] == '\'') || (val[strlen(val) - 1] == '"')))
+		return 1;
+
+	return 0;
 }
 
 int gettype(char *val)

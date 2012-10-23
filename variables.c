@@ -14,7 +14,7 @@ int variable_allow_overwrite(char *name, int allow)
 	if ((allow != 0) && (allow != 1))
 		return -EINVAL;
 
-	DPRINTF("Calling %s(%s, %d)\n", __FUNCTION__, name, allow);
+	DPRINTF("Calling %s(%s, %d)\n", __FUNCTION__, name ? name : "<all>", allow);
 
 	if (name == NULL)
 		_var_overwrite = allow;

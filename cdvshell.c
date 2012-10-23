@@ -527,7 +527,10 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 	}
 	else
 	if (strncmp(str, "eval ", 5) == 0) {
-		desc_printf(io, cfd, "Expression evaluation returned error code %d\n", script_process_line(str + 5));
+		int ec = 0;
+
+		ec = script_process_line(str + 5);
+		desc_printf(io, cfd, "Expression evaluation returned error code %d (%s)\n", ec, strerror(-ec));
 	}
 	else
 	if (strncmp(str, "emulate", 7) == 0) {

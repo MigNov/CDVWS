@@ -425,6 +425,7 @@ char *cdvStringAppend(char *var, char *val);
 int gettype(char *val);
 int is_numeric(char *val);
 int get_boolean(char *val);
+int is_string(char *val);
 
 /* Project related options */
 void project_info_init(void);

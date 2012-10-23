@@ -11,7 +11,7 @@ do { fprintf(stderr, "[cdv/scripting   ] " fmt , args); } while (0)
 
 int _script_builtin_function(char *var, char *fn, char *args)
 {
-	if (strcmp(fn, "set_variables_overwritable") == 0) {
+	if (strcmp(fn, "set_all_variables_overwritable") == 0) {
 		if (args != NULL) {
 			int var = get_boolean(args);
 
@@ -19,18 +19,18 @@ int _script_builtin_function(char *var, char *fn, char *args)
 				variable_allow_overwrite(NULL, var);
 			else
 				desc_printf(gIO, gFd, "Invalid value for %s(): %s\n",
-					__FUNCTION__, args);
+					fn, args);
 		}
 	}
 	else
-	if (strcmp(fn, "get_variables_overwritable") == 0) {
+	if (strcmp(fn, "get_all_variables_overwritable") == 0) {
 		if (var != NULL) {
 			char tmp[4] = { 0 };
 			snprintf(tmp, sizeof(tmp), "%d", variable_get_overwrite(NULL));
 			variable_add(var, tmp, TYPE_QSCRIPT, -1, TYPE_INT);
 		}
 		else
-			desc_printf(gIO, gFd, "Variable overwritable: %s\n",
+			desc_printf(gIO, gFd, "All variables overwritable: %s\n",
 				(variable_get_overwrite(NULL) == 1) ? "true" : "false");
 	}
 	else
@@ -116,6 +116,45 @@ int _script_builtin_function(char *var, char *fn, char *args)
 		}
 	}
 	else
+	if (strcmp(fn, "printf") == 0) {
+		if ((args != NULL) && (strlen(args) > 0)) {
+			int i;
+			tTokenizer t;
+
+			*args++;
+
+			t = tokenize(args, "\"");
+			if (t.numTokens == 2) {
+				tTokenizer t2;
+				char *instr = NULL;
+				char *vars = NULL;
+
+				instr = strdup( t.tokens[0] );
+				vars = strdup( t.tokens[1] + 1 );
+
+				t2 = tokenize(vars, ",");
+				for (i = 0; i < t2.numTokens; i++)
+					instr = replace(instr, "%s", variable_get_element_as_string(trim(t2.tokens[i]), NULL));
+
+				while (strstr(instr, "\\n") != NULL)
+					instr = replace(instr, "\\n", "\n");
+
+				desc_printf(gIO, gFd, "%s", instr);
+				free_tokens(t2);
+			}
+			else {
+				free_tokens(t);
+				return -EINVAL;
+			}
+
+			free_tokens(t);
+		}
+		else {
+			desc_printf(gIO, gFd, "Invalid syntax for printf()\n");
+			return -EINVAL;
+		}
+	}
+	else
 		return -EINVAL;
 
 	return 0;
@@ -141,10 +180,14 @@ int script_process_line(char *buf)
 		if (val[strlen(val) - 1] == ';') {
 			val[strlen(val) - 1] = 0;
 
-			if (is_numeric(val)) {
+			if (is_numeric(val) || is_string(val)) {
+				if (is_string(val)) {
+					*val++;
+					val[strlen(val) - 1] = 0;
+				}
 				if (variable_add(trim(t.tokens[0]), val, TYPE_QSCRIPT, -1, gettype(val)) < 0) {
 					desc_printf(gIO, gFd, "Cannot set new value to variable %s\n", trim(t.tokens[0]));
-					ret = -EIO;
+					ret = -EEXIST;
 				}
 				else
 					ret = 0;

@@ -3,6 +3,7 @@
 	dumptype(x);
 
 	z = 34;
+	a = 2;
 
 	print(x);
 
@@ -10,10 +11,10 @@
 	print(z);
 	print('\n');
 
-	printf("Value of z is: %s", z);
+	printf("Value of z is: %s, a: %s\n", z, a);
 
-	set_variables_overwritable(true);
+	set_all_variables_overwritable(true);
 
 	z = 123;
-	print(z);
+	printf("Value of z is: %s\n", z);
 $>
