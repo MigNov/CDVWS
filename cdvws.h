@@ -323,8 +323,8 @@ typedef struct tVariables {
 	double dValue;
 	int idParent;
 
-	int allow_overwrite;
-	int deleted;
+	short allow_overwrite;
+	short deleted;
 } tVariables;
 
 tVariables *_vars;

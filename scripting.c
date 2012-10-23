@@ -35,7 +35,6 @@ int _script_builtin_function(char *var, char *fn, char *args)
 	}
 	else
 	if (strcmp(fn, "set_variable_overwritable") == 0) {
-		int i;
 		tTokenizer t;
 
 		t = tokenize(args, ",");
