@@ -325,6 +325,7 @@ typedef struct tVariables {
 
 	short allow_overwrite;
 	short deleted;
+	short fixed_type;
 } tVariables;
 
 tVariables *_vars;
@@ -344,6 +345,9 @@ int variable_get_overwrite(char *name);
 int variable_set_deleted(char *name, int is_deleted);
 int variable_get_deleted(char *name);
 int variable_get_idx(char *el, char *type);
+int variable_set_fixed_type(char *name, char *type);
+int variable_get_fixed_type(char *name);
+int variable_create(char *name, char *type);
 
 /* Scripts */
 int run_script(char *filename);
@@ -426,6 +430,8 @@ int gettype(char *val);
 int is_numeric(char *val);
 int get_boolean(char *val);
 int is_string(char *val);
+int is_comment(char *val);
+int get_type_from_string(char *type, int allow_autodetection);
 
 /* Project related options */
 void project_info_init(void);

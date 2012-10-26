@@ -175,6 +175,17 @@ int script_process_line(char *buf)
 		DPRINTF("%s: Comparison found\n", __FUNCTION__);
 	}
 	else
+	/* Definition */
+	if (strncmp(buf, "define ", 7) == 0) {
+		tTokenizer t;
+
+		t = tokenize(buf + 7, " ");
+		if (t.numTokens != 2)
+			return -EINVAL;
+		if (variable_create(trim(t.tokens[0]), trim(t.tokens[1])) != 1)
+			return -EIO;
+	}
+	else
 	/* Assignment */
 	if (strstr(buf, "=") != NULL) {
 		tTokenizer t;

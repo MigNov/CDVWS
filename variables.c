@@ -75,12 +75,96 @@ int variable_get_deleted(char *name)
 	return _vars[idx].deleted;
 }
 
+int variable_set_fixed_type(char *name, char *type)
+{
+	int tmp, idx;
+
+	if (name == NULL)
+		return 0;
+
+	idx = variable_get_idx(name, NULL);
+	if (idx < 0)
+		return 0;
+
+	if (strcmp(type, "dynamic") == 0) {
+		_vars[idx].fixed_type = 0;
+	}
+	else {
+		tmp = get_type_from_string(type, 0);
+		if (tmp < 0)
+			return 0;
+
+		_vars[idx].fixed_type = tmp;
+	}
+
+	DPRINTF("%s: Variable %s set as fixed to type %s\n", __FUNCTION__, name, type);
+	return 1;
+}
+
+int variable_get_fixed_type(char *name)
+{
+	if (name == NULL)
+		return 0;
+
+	int idx = variable_get_idx(name, NULL);
+	if (idx < 0)
+		return -1;
+
+	return _vars[idx].fixed_type;
+}
+
+int variable_create(char *name, char *type)
+{
+	if (_vars == NULL) {
+		_vars = (tVariables *)malloc( sizeof(tVariables) );
+		_vars_num = 0;
+	}
+	else {
+		int idx;
+
+		if ((idx = variable_lookup_name_idx(name, NULL, -1)) != -1)
+			return -EEXIST;
+
+		_vars = (tVariables *)realloc( _vars, (_vars_num + 1) * sizeof(tVariables) );
+	}
+
+	if (_vars == NULL)
+		return -ENOMEM;
+
+	if (type[strlen(type) - 1] == ';')
+		type[strlen(type) - 1] = 0;
+
+	DPRINTF("%s: Creating variable %s; type is %s\n", __FUNCTION__, name, type);
+
+	_vars[_vars_num].id = _vars_num;
+	_vars[_vars_num].iValue = 0;
+	_vars[_vars_num].lValue = 0;
+	_vars[_vars_num].sValue = NULL;
+	_vars[_vars_num].q_type = TYPE_QSCRIPT;
+	_vars[_vars_num].idParent = -1;
+	_vars[_vars_num].deleted = 1;
+	_vars[_vars_num].fixed_type = get_type_from_string(type, 1);
+	_vars[_vars_num].allow_overwrite = -1;
+	if (name == NULL)
+		_vars[_vars_num].name = NULL;
+	else
+		_vars[_vars_num].name = strdup(name);
+
+	_vars[_vars_num].type = type;
+	_vars_num++;
+	return _vars_num - 1;
+}
+
 int variable_set(char *name, char *value, int q_type, int idParent, int type)
 {
-	int idx;
+	int idx, ftype;
 
 	if ((idx = variable_lookup_name_idx(name, NULL, idParent))== -1)
 		return -ENOENT;
+
+	ftype = variable_get_fixed_type(name);
+	if ((ftype > 0) && (ftype != type))
+		return -ENOTSUP;
 
         _vars[idx].iValue = 0;
         _vars[idx].lValue = 0;
@@ -141,6 +225,7 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 	_vars[_vars_num].q_type = q_type;
 	_vars[_vars_num].idParent = idParent;
 	_vars[_vars_num].deleted = 0;
+	_vars[_vars_num].fixed_type = 0;
 	_vars[_vars_num].allow_overwrite = -1;
 	if (name == NULL)
 		_vars[_vars_num].name = NULL;
@@ -260,6 +345,8 @@ void variable_dump(void)
 		DPRINTF("\tAllow overwrite: %d (local %d)\n", variable_get_overwrite(_vars[i].name),
 				 _vars[i].allow_overwrite);
 		DPRINTF("\tDeleted: %d\n", _vars[i].deleted);
+		DPRINTF("\tFixed to type: %s (%d)\n", (_vars[i].fixed_type > 0) ? "true" : "false",
+			_vars[i].fixed_type);
 
 		if (_vars[i].type == TYPE_INT)
 			DPRINTF("\tValue: %d (int)\n", _vars[i].iValue);
@@ -278,6 +365,8 @@ void variable_dump(void)
 		else
 		if (_vars[i].type == TYPE_STRUCT)
 			DPRINTF("\tValue: <struct%s\n", ">");
+		else
+			DPRINTF("\tValue: %s\n", "<unset>");
 	}
 }
 

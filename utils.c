@@ -555,6 +555,22 @@ int gettype(char *val)
 	return TYPE_STRING;
 }
 
+int get_type_from_string(char *type, int allow_autodetection)
+{
+	if ((strcmp(type, "auto") == 0) && (allow_autodetection))
+		return 0;
+	if (strcmp(type, "string") == 0)
+		return TYPE_STRING;
+	if (strcmp(type, "int") == 0)
+		return TYPE_INT;
+	if (strcmp(type, "long") == 0)
+		return TYPE_LONG;
+	if (strcmp(type, "double") == 0)
+		return TYPE_DOUBLE;
+
+	return -1;
+}
+
 void desc_printf(BIO *io, int fd, const char *fmt, ...)
 {
 	va_list ap;
