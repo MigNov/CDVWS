@@ -101,8 +101,8 @@ char *_idb_get_input_value(char *data, int *otype)
 int idb_query(char *query)
 {
 	int i, ret = -ENOTSUP;
-	struct timespec tss, tse;
-	struct timespec ts;
+	struct timespec tss = { .tv_sec = 0, .tv_nsec = 0 };
+	struct timespec ts, tse;
 	float myTime = -1;
 	tTokenizer t;
 	int log = 0;
@@ -684,7 +684,7 @@ int idb_query(char *query)
 	}
 
 cleanup:
-	if (_perf_measure) {
+	if ((_perf_measure) && (tss.tv_sec > 0) && (tss.tv_nsec > 0)) {
 		tse = utils_get_time( TIME_CURRENT );
 		desc_printf(gIO, gFd, "PERF: Query \"%s\" was being processed for %.3f microseconds\n\n",
 			query, get_time_float_us( tse, tss ));
