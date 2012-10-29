@@ -432,6 +432,7 @@ int get_boolean(char *val);
 int is_string(char *val);
 int is_comment(char *val);
 int get_type_from_string(char *type, int allow_autodetection);
+char *get_type_string(int id);
 
 /* Project related options */
 void project_info_init(void);

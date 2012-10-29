@@ -71,7 +71,6 @@ int variable_get_deleted(char *name)
 	if (idx < 0)
 		return 1;
 
-	DPRINTF("Variable %s deleted: %d\n", name, _vars[idx].deleted);
 	return _vars[idx].deleted;
 }
 
@@ -289,19 +288,7 @@ char *variable_get_type_string(char *el, char *type)
 	if (id < 0)
 		return NULL;
 
-	if (id == TYPE_INT)
-		return strdup("int");
-	else
-	if (id == TYPE_LONG)
-		return strdup("long");
-	else
-	if (id == TYPE_DOUBLE)
-		return strdup("double");
-	else
-	if (id == TYPE_STRING)
-		return strdup("string");
-	else
-		return strdup("unknown");
+	return get_type_string(id);
 }
 
 char *variable_get_element_as_string(char *el, char *type)
@@ -353,8 +340,8 @@ void variable_dump(void)
 		DPRINTF("\tAllow overwrite: %d (local %d)\n", variable_get_overwrite(_vars[i].name),
 				 _vars[i].allow_overwrite);
 		DPRINTF("\tDeleted: %d\n", _vars[i].deleted);
-		DPRINTF("\tFixed to type: %s (%d)\n", (_vars[i].fixed_type > 0) ? "true" : "false",
-			_vars[i].fixed_type);
+		DPRINTF("\tFixed to type: %s\n", (_vars[i].fixed_type > 0) ?
+			get_type_string(_vars[i].fixed_type) : "<none>");
 
 		if (_vars[i].type == TYPE_INT)
 			DPRINTF("\tValue: %d (int)\n", _vars[i].iValue);

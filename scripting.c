@@ -186,6 +186,64 @@ int script_process_line(char *buf)
 			return -EIO;
 	}
 	else
+	/* Operators */
+	if ((strstr(buf, "+=") != NULL) || (strstr(buf, "-=") != NULL) ||
+		(strstr(buf, "%=") != NULL) || (strstr(buf, "*=") != NULL) ||
+		(strstr(buf, "/=") != NULL)) {
+		tTokenizer t;
+		char *var;
+		char *val;
+		int op, vtype;
+
+		t = tokenize(buf, "=");
+		if (t.numTokens != 2)
+			return -EINVAL;
+
+		var = trim(strdup(t.tokens[0]));
+		val = trim(strdup(t.tokens[1]));
+
+		op = var[ strlen(var) - 1];
+		var[ strlen(var) - 1] = 0;
+
+		var = trim(var);
+		if (val[strlen(val) - 1] == ';')
+			val[strlen(val) - 1] = 0;
+		val = trim(val);
+
+		vtype = variable_get_type(var, NULL);
+		if ((vtype == TYPE_INT) || (vtype == TYPE_LONG)) {
+			char tmp[32] = { 0 };
+			long value = atol(variable_get_element_as_string(var, NULL));
+
+			if (op == '+')
+				value += atol(val);
+			else
+			if (op == '-')
+				value -= atol(val);
+			else
+			if (op == '*')
+				value *= atol(val);
+			else
+			if (op == '%')
+				value %= atol(val);
+			else
+			if (op == '/')
+				value /= atol(val);
+
+			snprintf(tmp, sizeof(tmp), "%ld", value);
+			variable_set_deleted(var, 1);
+			variable_add(var, tmp, TYPE_QSCRIPT, -1, vtype);
+			ret = 0;
+		}
+		else
+			ret = -EINVAL;
+
+		free(var);
+		free(val);
+		free_tokens(t);
+		return ret;
+	}
+	else
 	/* Assignment */
 	if (strstr(buf, "=") != NULL) {
 		tTokenizer t;

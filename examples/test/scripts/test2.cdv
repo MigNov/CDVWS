@@ -8,6 +8,11 @@
 	z = 34;
 	a = 2;
 
+	a += 2;
+	a *= 2;
+	z /= 2;
+	z -= 2;
+
 	print(x);
 
 	print('Value of z is: ');

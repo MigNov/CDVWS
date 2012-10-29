@@ -571,6 +571,23 @@ int get_type_from_string(char *type, int allow_autodetection)
 	return -1;
 }
 
+char *get_type_string(int id)
+{
+	if (id == TYPE_INT)
+		return strdup("int");
+	else
+	if (id == TYPE_LONG)
+		return strdup("long");
+	else
+	if (id == TYPE_DOUBLE)
+		return strdup("double");
+	else
+	if (id == TYPE_STRING)
+		return strdup("string");
+	else
+		return strdup("unknown");
+}
+
 void desc_printf(BIO *io, int fd, const char *fmt, ...)
 {
 	va_list ap;
