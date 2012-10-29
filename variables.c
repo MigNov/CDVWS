@@ -86,7 +86,7 @@ int variable_set_fixed_type(char *name, char *type)
 	if (idx < 0)
 		return 0;
 
-	if (strcmp(type, "dynamic") == 0) {
+	if ((type == NULL) || (strcmp(type, "dynamic") == 0)) {
 		_vars[idx].fixed_type = 0;
 	}
 	else {
@@ -115,6 +115,9 @@ int variable_get_fixed_type(char *name)
 
 int variable_create(char *name, char *type)
 {
+	if ((name == NULL) || (type == NULL))
+		return -1;
+
 	if (_vars == NULL) {
 		_vars = (tVariables *)malloc( sizeof(tVariables) );
 		_vars_num = 0;
@@ -131,6 +134,7 @@ int variable_create(char *name, char *type)
 	if (_vars == NULL)
 		return -ENOMEM;
 
+	/* Type cannot end with semicolon so remove it */
 	if (type[strlen(type) - 1] == ';')
 		type[strlen(type) - 1] = 0;
 
@@ -162,6 +166,7 @@ int variable_set(char *name, char *value, int q_type, int idParent, int type)
 	if ((idx = variable_lookup_name_idx(name, NULL, idParent))== -1)
 		return -ENOENT;
 
+	/* If the variable exists and has fixed type do *not* allow type override */
 	ftype = variable_get_fixed_type(name);
 	if ((ftype > 0) && (ftype != type))
 		return -ENOTSUP;
@@ -196,6 +201,9 @@ int variable_set(char *name, char *value, int q_type, int idParent, int type)
 
 int variable_add(char *name, char *value, int q_type, int idParent, int type)
 {
+	if (value == NULL)
+		return -1;
+
 	if (_vars == NULL) {
 		_vars = (tVariables *)malloc( sizeof(tVariables) );
 		_vars_num = 0;
@@ -306,7 +314,7 @@ char *variable_get_element_as_string(char *el, char *type)
 	for (i = 0; i < t.numTokens; i++)
 		id = variable_lookup_name_idx(t.tokens[i], type, id);
 
-	/* If there's no such variable then return null */
+	/* If there's no such variable then return NULL */
 	if (id == -1)
 		return NULL;
 

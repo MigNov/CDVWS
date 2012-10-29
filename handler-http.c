@@ -173,8 +173,6 @@ void http_parse_data(char *data, int tp)
 		free(value);
 	}
 	free_tokens(t);
-
-	printf(">>> %s\n", variable_get_element_as_string("b.b", "get"));
 }
 
 void http_parse_data_getpost(char *get, char *post)

@@ -1,8 +1,6 @@
 #define DEBUG_DB
 
 #include "cdvws.h"
-//#include <libxml/parser.h>
-//#include <libxml/xpath.h>
 
 #ifdef DEBUG_DB
 #define DPRINTF(fmt, ...) \
