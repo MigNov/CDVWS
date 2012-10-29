@@ -11,6 +11,13 @@ do { fprintf(stderr, "[cdv/scripting   ] " fmt , args); } while (0)
 
 int _script_builtin_function(char *var, char *fn, char *args)
 {
+	int ret = 0;
+	struct timespec ts;
+	struct timespec tse;
+
+	if (_perf_measure)
+		ts = utils_get_time( TIME_CURRENT );
+
 	if (strcmp(fn, "set_all_variables_overwritable") == 0) {
 		if (args != NULL) {
 			int var = get_boolean(args);
@@ -62,6 +69,21 @@ int _script_builtin_function(char *var, char *fn, char *args)
 		}
 		else
 			desc_printf(gIO, gFd, "Variable name is missing\n");
+	}
+	else
+	if (strcmp(fn, "enable_perf") == 0) {
+		int enable = get_boolean(args);
+
+		if ((enable == 0) || (enable == 1)) {
+			DPRINTF("%sabling performance measuring\n", enable ? "En" : "Dis");
+
+			_perf_measure = enable;
+		}
+		else
+			DPRINTF("Incorrect setting for performace measuring: %d\n", enable);
+
+		if (_perf_measure)
+			ts = utils_get_time( TIME_CURRENT );
 	}
 	else
 	if (strcmp(fn, "del") == 0) {
@@ -144,30 +166,132 @@ int _script_builtin_function(char *var, char *fn, char *args)
 			}
 			else {
 				free_tokens(t);
-				return -EINVAL;
+				ret = -EINVAL;
+				goto cleanup;
 			}
 
 			free_tokens(t);
 		}
 		else {
 			desc_printf(gIO, gFd, "Invalid syntax for printf()\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto cleanup;
 		}
 	}
 	else
-		return -EINVAL;
+	if (strcmp(fn, "idb_query") == 0) {
+		char *filename = NULL;
+		char *query = NULL;
+		tTokenizer t;
+		int i;
 
-	return 0;
+		t = tokenize(args, "\"");
+		if (t.numTokens > 1) {
+			int num = 0;
+			for (i = 0; i < t.numTokens; i++) {
+				if (strcmp(trim(t.tokens[i]), ",") != 0) {
+					if (num == 0)
+						filename = strdup(t.tokens[i]);
+					else
+					if (num == 1)
+						query = strdup(t.tokens[i]);
+					num++;
+				}
+			}
+		}
+		free_tokens(t);
+
+		if (((filename == NULL) || (query == NULL)) && (args[0] == '@')) {
+			*args++;
+
+			DPRINTF("Reading query file '%s'\n", args);
+			if (access(args, R_OK) == 0) {
+				FILE *fp = NULL;
+				char buf[BUFSIZE];
+
+				fp = fopen(args, "r");
+				if (fp != NULL) {
+					int num = 0;
+
+					while (!feof(fp)) {
+						memset(buf, 0, sizeof(buf));
+
+						fgets(buf, sizeof(buf), fp);
+						if ((strlen(buf) > 0)
+							&& (buf[strlen(buf) - 1] == '\n'))
+							buf[strlen(buf) - 1] = 0;
+
+						if (strlen(buf) > 0) {
+							num++;
+							int ret = idb_query(buf);
+							desc_printf(gIO, gFd, "Query '%s' returned with code %d\n",
+								buf, ret);
+						}
+					}
+
+					desc_printf(gIO, gFd, "%d queries processed\n", num);
+					fclose(fp);
+				}
+				else
+					desc_printf(gIO, gFd, "Error: Cannot open file %s for reading\n",
+						args);
+			}
+			else
+				desc_printf(gIO, gFd, "Error: Cannot access file %s\n", t.tokens[1]);
+		}
+		else
+		if ((filename != NULL) && (query != NULL)) {
+			char tmp[4096] = { 0 };
+			snprintf(tmp, sizeof(tmp), "INIT %s", filename);
+
+			ret = 0;
+			if (idb_query(tmp) != 0) {
+				DPRINTF("Error while trying to initialize file '%s'\n", filename);
+				ret = -EIO;
+			}
+			if (idb_query(query) != 0) {
+				DPRINTF("Error while running query '%s'\n", query);
+				ret = -EIO;
+			}
+			else
+			if ((strncmp(query, "SELECT", 6) == 0) || (strcmp(query, "SHOW TABLES") == 0)) {
+				idb_results_show( gIO, gFd, idb_get_last_select_data() );
+				idb_free_last_select_data();
+			}
+
+			idb_query("COMMIT");
+			idb_query("CLOSE");
+		}
+	}
+	else {
+		ret = -EINVAL;
+		goto cleanup;
+	}
+
+cleanup:
+	if (_perf_measure) {
+		tse = utils_get_time( TIME_CURRENT );
+		desc_printf(gIO, gFd, "\nPERF: Function %s() was running for %.3f microseconds\n",
+			fn, get_time_float_us( tse, ts ));
+	}
+
+	return ret;
 }
 
 int script_process_line(char *buf)
 {
 	int ret = -ENOTSUP;
+	struct timespec ts = { .tv_sec = 0, .tv_nsec = 0 };
+	struct timespec tse;
+
+	if (_perf_measure)
+		ts = utils_get_time( TIME_CURRENT );
 
 	/* Skip if it's a one line comment (more to be implemented) */
 	if (is_comment(buf) == 1) {
 		DPRINTF("%s: Found comment, skipping\n", __FUNCTION__);
-		return 0;
+		ret = 0;
+		goto cleanup;
 	}
 
 	/* Comparison */
@@ -180,10 +304,14 @@ int script_process_line(char *buf)
 		tTokenizer t;
 
 		t = tokenize(buf + 7, " ");
-		if (t.numTokens != 2)
-			return -EINVAL;
-		if (variable_create(trim(t.tokens[0]), trim(t.tokens[1])) != 1)
-			return -EIO;
+		if (t.numTokens != 2) {
+			ret = -EINVAL;
+			goto cleanup;
+		}
+		if (variable_create(trim(t.tokens[0]), trim(t.tokens[1])) != 1) {
+			ret = -EIO;
+			goto cleanup;
+		}
 	}
 	else
 	/* Operators */
@@ -196,8 +324,10 @@ int script_process_line(char *buf)
 		int op, vtype;
 
 		t = tokenize(buf, "=");
-		if (t.numTokens != 2)
-			return -EINVAL;
+		if (t.numTokens != 2) {
+			ret = -EINVAL;
+			goto cleanup;
+		}
 
 		var = trim(strdup(t.tokens[0]));
 		val = trim(strdup(t.tokens[1]));
@@ -248,8 +378,6 @@ int script_process_line(char *buf)
 	if (strstr(buf, "=") != NULL) {
 		tTokenizer t;
 
-		DPRINTF("%s: Assignment found\n", __FUNCTION__);
-
 		t = tokenize(buf, "=");
 		char *val = strdup( trim(t.tokens[1]) );
 		if (val[strlen(val) - 1] == ';') {
@@ -274,8 +402,10 @@ int script_process_line(char *buf)
 				char *fn;
 
 				t2 = tokenize(val, "(");
-				if (t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] != ')')
-					return -EINVAL;
+				if (t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] != ')') {
+					ret = -EINVAL;
+					goto cleanup;
+				}
 
 				t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] = 0;
 				fn = strdup(t2.tokens[0]);
@@ -315,8 +445,10 @@ int script_process_line(char *buf)
 		char *fn;
 
 		t2 = tokenize(buf, "(");
-		if (t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] != ';')
-			return -EINVAL;
+		if (t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] != ';') {
+			ret = -EINVAL;
+			goto cleanup;
+		}
 
 		t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] = 0;
 		fn = strdup(t2.tokens[0]);
@@ -341,6 +473,13 @@ int script_process_line(char *buf)
 	else
 		DPRINTF("%s: Not implemented yet\n", __FUNCTION__);
 
+cleanup:
+	if ((_perf_measure) && ((ts.tv_nsec > 0) && (ts.tv_sec > 0))) {
+		tse = utils_get_time( TIME_CURRENT );
+		desc_printf(gIO, gFd, "PERF: Line \"%s\" was being processed for %.3f microseconds\n\n",
+			buf, get_time_float_us( tse, ts ));
+	}
+
 	return ret;
 }
 
@@ -349,6 +488,8 @@ int run_script(char *filename)
 	FILE *fp;
 	int opened = 0;
 	char buf[4096] = { 0 };
+	struct timespec ts = utils_get_time( TIME_CURRENT );
+	struct timespec tse;
 
 	if (access(filename, R_OK) != 0)
 		return -ENOENT;
@@ -375,8 +516,15 @@ int run_script(char *filename)
 		}
 	}
 
-	variable_dump();
 	fclose(fp);
+
+	if (_perf_measure) {
+		tse = utils_get_time( TIME_CURRENT );
+		desc_printf(gIO, gFd, "PERF: File \"%s\" has been processed in %.3f microseconds\n\n",
+			filename, get_time_float_us( tse, ts ));
+	}
+
+	variable_dump();
 	return 0;
 }
 

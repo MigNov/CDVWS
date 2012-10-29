@@ -331,6 +331,7 @@ typedef struct tVariables {
 tVariables *_vars;
 int _vars_num;
 int _var_overwrite;
+short _perf_measure;
 
 /* Variable manipulation stuff */
 int variable_add(char *name, char *value, int q_type, int idParent, int type);
@@ -376,6 +377,7 @@ void idb_results_free(tTableDataSelect *tds);
 int idb_load(char *filename);
 int idb_table_drop(char *table_name);
 void idb_free_last_select_data(void);
+tTableDataSelect idb_tables_show(void);
 
 /* Config stuff */
 int config_initialize(void);

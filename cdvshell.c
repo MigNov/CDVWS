@@ -287,7 +287,7 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 			ret = idb_query(str);
 		}
 
-		if (strncmp(str, "SELECT", 6) == 0) {
+		if ((strncmp(str, "SELECT", 6) == 0) || (strcmp(str, "SHOW TABLES") == 0)) {
 			idb_results_show( io, cfd, idb_get_last_select_data() );
 			idb_free_last_select_data();
 		}

@@ -2,6 +2,8 @@
 	define testvar auto;
 	define testvar2 string;
 
+	enable_perf(true);
+
 	x = get('b.a');
 	dumptype(x);
 
@@ -27,4 +29,7 @@
 	del(z);
 	z = 123;
 	printf("Value of z is: %s\n", z);
+
+	idb_query("/home/mig/Work/Interest/myPackages/cdvws/testdata.cdb", "SELECT * FROM test");
+	idb_query(@/home/mig/Work/Interest/myPackages/cdvws/test.idb);
 $>

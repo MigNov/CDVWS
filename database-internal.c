@@ -101,13 +101,19 @@ char *_idb_get_input_value(char *data, int *otype)
 int idb_query(char *query)
 {
 	int i, ret = -ENOTSUP;
+	struct timespec tss, tse;
 	struct timespec ts;
 	float myTime = -1;
 	tTokenizer t;
 	int log = 0;
 
-	if (query == NULL)
-		return -EINVAL;
+	if (_perf_measure)
+		tss = utils_get_time( TIME_CURRENT );
+
+	if (query == NULL) {
+		ret = -EINVAL;
+		goto cleanup;
+	}
 
 	/* Log queries to file is file is set */
 	if ((_idb_querylog != NULL) && (strcmp(query, "CLOSE") != 0)) {
@@ -537,6 +543,13 @@ int idb_query(char *query)
 		free_tokens(t);
 	}
 	else
+	if (strcmp(query, "SHOW TABLES") == 0) {
+		idb_free_last_select_data();
+		_last_tds = idb_tables_show();
+
+		ret = (_last_tds.num_rows == 0) ? -ENOENT : 0;
+	} 
+	else
 	if (strncmp(query, "SELECT", 6) == 0) {
 		tTokenizer t2;
 		int nextIsField;
@@ -616,10 +629,9 @@ int idb_query(char *query)
 		ret = (_last_tds.num_rows == 0) ? -ENOENT : 0;
 		free_tokens(t);
 
-		idb_results_dump( _last_tds );
+		/* We comment this out as it is for debugging purposes only */
+		//idb_results_dump( _last_tds );
 
-//		for (i = 0; i < t2.numTokens; i++)
-//			free(aFields[i]);
 		free(aFields);
 		free_tokens(t2);
 	}
@@ -669,6 +681,13 @@ int idb_query(char *query)
 		fd = open(_idb_querylog, O_WRONLY | O_CREAT | O_APPEND, 0644);
 		write(fd, tmp, strlen(tmp));
 		close(fd);
+	}
+
+cleanup:
+	if (_perf_measure) {
+		tse = utils_get_time( TIME_CURRENT );
+		desc_printf(gIO, gFd, "PERF: Query \"%s\" was being processed for %.3f microseconds\n\n",
+			query, get_time_float_us( tse, tss ));
 	}
 
 	DPRINTF("%s: Returning error code %d (%s), time is %.3f ms\n", __FUNCTION__, ret,
@@ -1686,6 +1705,32 @@ int _idb_fill_cdata(tTableDataField *tdi, char *filename)
 			tdi->cData_len);
 
 	return 0;
+}
+
+tTableDataSelect idb_tables_show(void)
+{
+	long i;
+	tTableDataSelect tds;
+
+	tds.rows = NULL;
+	tds.num_rows = 0;
+	tds.rows = (tTableDataRow *)malloc( idb_tables_num * sizeof(tTableDataRow) );
+	for (i = 0; i < idb_tables_num; i++) {
+		tds.rows[i].num_fields = 1;
+		tds.rows[i].tdi = (tTableDataField *)malloc( sizeof(tTableDataField) );
+		tds.rows[i].tdi[0].name = strdup( "Name" );
+		tds.rows[i].tdi[0].type = IDB_TYPE_STR;
+		tds.rows[i].tdi[0].iValue = 0;
+		tds.rows[i].tdi[0].lValue = 0;
+		tds.rows[i].tdi[0].sValue = strdup( idb_tables[i].name );
+		tds.rows[i].tdi[0].cData = NULL;
+		tds.rows[i].tdi[0].cData_len = 0;
+	}
+
+	_idb_num_queries++;
+	_idb_num_queries_select++;
+	tds.num_rows = idb_tables_num;
+	return tds;
 }
 
 tTableDataSelect idb_table_select(char *table, int num_fields, char **fields, int num_where_fields, tTableDataInput *where_fields)
