@@ -1957,8 +1957,10 @@ void idb_results_show(BIO *io, int cfd, tTableDataSelect tds)
 {
 	long i = 0, j = 0;
 
-	if (tds.num_rows <= 0)
+	if (tds.num_rows <= 0) {
+		DPRINTF("%s: No data in the data set (%ld rows)\n", __FUNCTION__, tds.num_rows);
 		return;
+	}
 
 	for (i = 0; i < tds.rows[0].num_fields; i++) {
 		desc_printf(io, cfd, "+");

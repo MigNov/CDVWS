@@ -179,6 +179,10 @@ int _script_builtin_function(char *var, char *fn, char *args)
 		}
 	}
 	else
+	if (strcmp(fn, "idb_dump_query_set") == 0) {
+		idb_results_show( gIO, gFd, idb_get_last_select_data() );
+	}
+	else
 	if (strcmp(fn, "idb_query") == 0) {
 		char *filename = NULL;
 		char *query = NULL;
@@ -254,10 +258,8 @@ int _script_builtin_function(char *var, char *fn, char *args)
 				ret = -EIO;
 			}
 			else
-			if ((strncmp(query, "SELECT", 6) == 0) || (strcmp(query, "SHOW TABLES") == 0)) {
+			if ((strncmp(query, "SELECT", 6) == 0) || (strcmp(query, "SHOW TABLES") == 0))
 				idb_results_show( gIO, gFd, idb_get_last_select_data() );
-				idb_free_last_select_data();
-			}
 
 			idb_query("COMMIT");
 			idb_query("CLOSE");
@@ -517,6 +519,8 @@ int run_script(char *filename)
 	}
 
 	fclose(fp);
+
+	idb_free_last_select_data();
 
 	if (_perf_measure) {
 		tse = utils_get_time( TIME_CURRENT );

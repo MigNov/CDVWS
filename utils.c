@@ -529,8 +529,12 @@ int is_comment(char *val)
 		return 0;
 
 	for (i = 0; i < strlen(val); i++) {
-		if (val[i] == '/')
+		if (val[i] == '/') {
 			num++;
+
+			if (num == 2)
+				break;
+		}
 		else
 		if (val[i] == '*')
 			numA++;
@@ -540,6 +544,8 @@ int is_comment(char *val)
 		else
 		if ((val[i] == '/') && (numA == 1))
 			return 3;
+		else
+			num = 0;
 	}
 
 	return (num == 2);
