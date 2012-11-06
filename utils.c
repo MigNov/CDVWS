@@ -28,6 +28,7 @@ int first_initialize(int enabled)
 	_perf_measure = 0;
 	gIO = NULL;
 	gFd = -1;
+	gHttpHandler = 0;
 
 	return 0;
 }
@@ -602,8 +603,26 @@ void desc_printf(BIO *io, int fd, const char *fmt, ...)
 
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, ap);
-	write_common(io, fd, buf, strlen(buf));
 	va_end(ap);
+
+	if (gHttpHandler == 1) {
+		char *tmp = strdup(buf);
+
+		while (strstr(tmp, "\n") != NULL)
+			tmp = replace(tmp, "\n", "<br />");
+		while (strstr(tmp, "  ") != NULL)
+			tmp = replace(tmp, "  ", "&nbsp; ");
+		if (strstr(tmp, "PERF:") != NULL)
+			tmp = replace(tmp, "PERF:", "<i><font color=\"red\">PERF: ");
+
+		write_common(io, fd, tmp, strlen(tmp));
+
+		if (strstr(tmp, "PERF:") != NULL)
+			write_common(io, fd, "</font></i>", 11);
+		//free(tmp);
+	}
+	else
+		write_common(io, fd, buf, strlen(buf));
 }
 
 char *desc_read(BIO *io, int fd)

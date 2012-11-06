@@ -893,7 +893,7 @@ int run_shell(BIO *io, int cfd)
 	if (cfd == STDIN)
 		readline_init(READLINE_HISTORY_FILE_CDV);
 
-	script_set_descriptors(io, cfd);
+	script_set_descriptors(io, cfd, 0);
 
 	desc_printf(io, cfd, "\nCDV WebServer v%s shell\n", VERSION);
 	while (1) {

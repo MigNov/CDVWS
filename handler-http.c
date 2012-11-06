@@ -365,6 +365,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			DPRINTF("Returning XMLRPC result: '%s'\n", data);
 			write_common(io, connected, data, strlen(data));
 			free(data);
+			cleanup();
 			return 1;
 		}
 	}
@@ -397,12 +398,16 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 				if (tmp != NULL) {
 					snprintf(loc, sizeof(loc), "%s/%s%s.cdv", tmp, dir, filename);
 					DPRINTF("%s: Script file is '%s'\n", __FUNCTION__, loc);
+					script_set_descriptors(io, connected, 1);
 					if (run_script(loc) != 0) {
 						http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, "text/html", NULL, 0);
+						cleanup();
 						return 1;
 					}
 
 					DPRINTF("%s: Script run successfully\n", __FUNCTION__);
+					cleanup();
+					return 1;
 				}
 			}
 		}

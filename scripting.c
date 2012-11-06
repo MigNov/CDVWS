@@ -146,6 +146,17 @@ int _script_builtin_function(char *var, char *fn, char *args)
 			*args++;
 
 			t = tokenize(args, "\"");
+			if (t.numTokens == 1) {
+				char *instr = NULL;
+
+				instr = strdup(t.tokens[0]);
+				while (strstr(instr, "\\n") != NULL)
+					instr = replace(instr, "\\n", "\n");
+
+				desc_printf(gIO, gFd, "%s", instr);
+				free(instr);
+			}
+			else
 			if (t.numTokens == 2) {
 				tTokenizer t2;
 				char *instr = NULL;
@@ -273,8 +284,8 @@ int _script_builtin_function(char *var, char *fn, char *args)
 cleanup:
 	if (_perf_measure) {
 		tse = utils_get_time( TIME_CURRENT );
-		desc_printf(gIO, gFd, "\nPERF: Function %s() was running for %.3f microseconds\n",
-			fn, get_time_float_us( tse, ts ));
+		desc_printf(gIO, gFd, "\nPERF: Function %s() was running for %.3f microseconds (%.3f ms)\n",
+			fn, get_time_float_us( tse, ts ), get_time_float_us(tse, ts) / 1000.);
 	}
 
 	return ret;
@@ -295,10 +306,61 @@ int script_process_line(char *buf)
 		ret = 0;
 		goto cleanup;
 	}
+	else
+	if (strcmp(buf, "else {") == 0) {
+		/* Reverse the condition */
 
-	/* Comparison */
-	if (strstr(buf, "==") != NULL) {
-		DPRINTF("%s: Comparison found\n", __FUNCTION__);
+		if ((_script_in_condition_and_met == 1)
+			|| (_script_in_condition_and_met == -10))
+			_script_in_condition_and_met = 0;
+		else
+		if ((_script_in_condition_and_met == 0)
+			|| (_script_in_condition_and_met == -20))
+			_script_in_condition_and_met = 1;
+		else
+		if (_script_in_condition_and_met != -1) {
+			DPRINTF("%s: Invalid state for else statement\n", __FUNCTION__);
+
+			ret = -EINVAL;
+			goto cleanup;
+		}
+
+		ret = 0;
+		goto cleanup;
+	}
+	else
+	if (strcmp(buf, "}") == 0) {
+		_script_in_condition_and_met = (_script_in_condition_and_met == 1) ? -10 : -20;
+		ret = 0;
+		goto cleanup;
+	}
+
+	if (_script_in_condition_and_met < -1)
+		_script_in_condition_and_met = 1;
+
+	if (_script_in_condition_and_met == 0) {
+		ret = 0;
+		goto cleanup;
+	}
+
+	/* Comparison with no ternary operator support */
+	if (regex_match("if \\(([^(]*)([^)]*)\\)", buf)) {
+		if (regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf)) {
+			char **matches = NULL;
+			int i, num_matches;
+
+			matches = (char **)malloc( sizeof(char *) );
+			_regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf, matches, &num_matches);
+
+			if (strcmp(variable_get_element_as_string(trim(matches[0]), NULL), trim(matches[1])) == 0)
+				_script_in_condition_and_met = 1;
+			else
+				_script_in_condition_and_met = 0;
+
+			for (i = 0; i < num_matches; i++)
+				free(matches[i]);
+			free(matches);
+		}
 	}
 	else
 	/* Definition */
@@ -478,8 +540,8 @@ int script_process_line(char *buf)
 cleanup:
 	if ((_perf_measure) && ((ts.tv_nsec > 0) && (ts.tv_sec > 0))) {
 		tse = utils_get_time( TIME_CURRENT );
-		desc_printf(gIO, gFd, "PERF: Line \"%s\" was being processed for %.3f microseconds\n\n",
-			buf, get_time_float_us( tse, ts ));
+		desc_printf(gIO, gFd, "PERF: Line \"%s\" was being processed for %.3f microseconds (%.3f ms)\n\n",
+			buf, get_time_float_us( tse, ts ), get_time_float_us(tse, ts) / 1000.);
 	}
 
 	return ret;
@@ -495,6 +557,8 @@ int run_script(char *filename)
 
 	if (access(filename, R_OK) != 0)
 		return -ENOENT;
+
+	_script_in_condition_and_met = -1;
 
 	fp = fopen(filename, "r");
 	if (fp == NULL)
@@ -524,24 +588,27 @@ int run_script(char *filename)
 
 	if (_perf_measure) {
 		tse = utils_get_time( TIME_CURRENT );
-		desc_printf(gIO, gFd, "PERF: File \"%s\" has been processed in %.3f microseconds\n\n",
-			filename, get_time_float_us( tse, ts ));
+		desc_printf(gIO, gFd, "PERF: File \"%s\" has been processed in %.3f microseconds (%.3f ms)\n\n",
+			basename(filename), get_time_float_us( tse, ts ), get_time_float_us(tse, ts) / 1000.);
 	}
 
 	variable_dump();
+	variable_free_all();
 	return 0;
 }
 
 #ifdef USE_SSL
-void script_set_descriptors(BIO *io, int fd)
+void script_set_descriptors(BIO *io, int fd, short httpHandler)
 {
 	gIO = io;
 	gFd = fd;
+	gHttpHandler = httpHandler;
 }
 #else
-void script_set_descriptors(void *io, int fd)
+void script_set_descriptors(void *io, int fd, short httpHandler)
 {
 	gIO = NULL;
 	gFd = fd;
+	gHttpHandler = httpHandler;
 }
 #endif

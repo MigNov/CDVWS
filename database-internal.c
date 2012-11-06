@@ -686,8 +686,8 @@ int idb_query(char *query)
 cleanup:
 	if ((_perf_measure) && (tss.tv_sec > 0) && (tss.tv_nsec > 0)) {
 		tse = utils_get_time( TIME_CURRENT );
-		desc_printf(gIO, gFd, "PERF: Query \"%s\" was being processed for %.3f microseconds\n\n",
-			query, get_time_float_us( tse, tss ));
+		desc_printf(gIO, gFd, "PERF: Query \"%s\" was being processed for %.3f microseconds (%.3f ms)\n\n",
+			query, get_time_float_us( tse, tss ), get_time_float_us(tse, tss) / 1000. );
 	}
 
 	DPRINTF("%s: Returning error code %d (%s), time is %.3f ms\n", __FUNCTION__, ret,
@@ -748,7 +748,7 @@ void idb_free(void)
 		write(fd, tmp, strlen(tmp));
 
 		snprintf(tmp, sizeof(tmp), "Session finished in %.3f ms (%.3f s), %d queries processed\n",
-			myTime, myTime / 1000., _idb_num_queries);
+			myTime / 1000., myTime / 1000000., _idb_num_queries);
 
 		write(fd, tmp, strlen(tmp));
 		close(fd);
@@ -761,7 +761,7 @@ void idb_free(void)
 			_idb_num_queries_create, _idb_num_queries_drop, _idb_num_queries);
 
 		DPRINTF("%s: Session finished in %.3f ms (%.3f s), %d queries processed\n", __FUNCTION__,
-			myTime, myTime / 1000., _idb_num_queries);
+			myTime / 1000., myTime / 1000000., _idb_num_queries);
 	}
 
 	_idb_num_queries = 0;

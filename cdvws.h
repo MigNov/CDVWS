@@ -82,9 +82,10 @@ unsigned char *mincrypt_base64_decode(const char *in, size_t *size);
 
 BIO *gIO;
 int gFd;
+int gHttpHandler;
 
 typedef int (tProcessRequest)(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len);
-void script_set_descriptors(BIO *io, int fd);
+void script_set_descriptors(BIO *io, int fd, short httpHandler);
 
 SSL_CTX *init_ssl_layer(char *private_key, char *public_key, char *root_key);
 int _sockets_done;
@@ -93,7 +94,7 @@ int _tcp_in_progress;
 char _tcp_buf[TCP_BUF_SIZE];
 int _tcp_total;
 #else
-void script_set_descriptors(void *io, int fd);
+void script_set_descriptors(void *io, int fd, short httpHandler);
 
 void *gIO;
 int gFd;
@@ -332,6 +333,7 @@ tVariables *_vars;
 int _vars_num;
 int _var_overwrite;
 short _perf_measure;
+short _script_in_condition_and_met;
 
 /* Variable manipulation stuff */
 int variable_add(char *name, char *value, int q_type, int idParent, int type);
@@ -353,6 +355,8 @@ int variable_create(char *name, char *type);
 /* Scripts */
 int run_script(char *filename);
 void http_parse_data(char *data, int tp);
+void http_host_header(BIO *io, int connected, int error_code, char *mt, char *cookie, int len);
+int _regex_match(char *regex, char *str, char **matches, int *match_count);
 int script_process_line(char *buf);
 
 /* Internal database stuff */
