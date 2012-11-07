@@ -564,6 +564,9 @@ int run_script(char *filename)
 	if (fp == NULL)
 		return -EPERM;
 
+	if (gHttpHandler)
+		http_host_header(gIO, gFd, HTTP_CODE_OK, "text/html", NULL, NULL);
+
 	while (!feof(fp)) {
 		memset(buf, 0, sizeof(buf));
 		fgets(buf, sizeof(buf), fp);
