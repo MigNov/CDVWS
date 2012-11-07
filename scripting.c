@@ -348,11 +348,13 @@ int script_process_line(char *buf)
 		if (regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf)) {
 			char **matches = NULL;
 			int i, num_matches;
+			char *val = NULL;
 
 			matches = (char **)malloc( sizeof(char *) );
 			_regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf, matches, &num_matches);
 
-			if (strcmp(variable_get_element_as_string(trim(matches[0]), NULL), trim(matches[1])) == 0)
+			val = variable_get_element_as_string(trim(matches[0]), NULL);
+			if ((val != NULL) && (strcmp(val, trim(matches[1])) == 0))
 				_script_in_condition_and_met = 1;
 			else
 				_script_in_condition_and_met = 0;
@@ -565,7 +567,7 @@ int run_script(char *filename)
 		return -EPERM;
 
 	if (gHttpHandler)
-		http_host_header(gIO, gFd, HTTP_CODE_OK, "text/html", NULL, NULL);
+		http_host_header(gIO, gFd, HTTP_CODE_OK, "text/html", NULL, 0);
 
 	while (!feof(fp)) {
 		memset(buf, 0, sizeof(buf));

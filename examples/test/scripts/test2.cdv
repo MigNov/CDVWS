@@ -2,10 +2,10 @@
 	define testvar auto;
 	define testvar2 string;
 
-	enable_perf(true);
-
-	x = get('b.a');
-	dumptype(x);
+	x = get('perf');
+	if (x == 1) {
+		enable_perf(true);
+	}
 
 	z = 34;
 	a = 2;
@@ -41,16 +41,16 @@
 	// idb_query(@/home/mig/Work/Interest/myPackages/cdvws/test.idb);
 
 	if (z == 123) {
-		printf(">>> Condition of test for 123 has been met\n");
+		printf("<b>Condition of test for 123 has been met</b>\n");
 	}
 	else {
-		printf(">>> Condition of test for 123 has not been met\n");
+		printf("<i>Condition of test for 123 has not been met<i>\n");
 	}
 
 	if (z == 111) {
-		printf(">>> Condition of test for 111 has been met\n");
+		printf("<b>Condition of test for 111 has been met</b>\n");
 	}
 	else {
-		printf(">>> Condition of test for 111 has not been met\n");
+		printf("<i>Condition of test for 111 has not been met</i>\n");
 	}
 $>

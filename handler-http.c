@@ -336,6 +336,8 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	if (find_project_for_web("examples", host) != 0)
 		return http_host_unknown(io, connected, host);
 
+	DPRINTF("Host %s is being served by PID #%d\n", host, getpid());
+
 	found = 0;
 	if (project_info_get("path_xmlrpc") != NULL) {
 		char *xmlrpc = project_info_get("path_xmlrpc");
