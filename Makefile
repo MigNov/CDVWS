@@ -12,7 +12,8 @@ all:
 	@rm -rf ./bindir
 	@mkdir -p ./bindir/modules
 	$(CC) -Wall -g -o ./bindir/cdvws $(OBJECTS) -ldl -rdynamic -lrt $(SSL) $(LIBXML_CFLAGS) $(LIBXML_LIBS) $(MINCRYPT) $(READLINE) $(REGEX)
-	cd modules && make && cd -
+	@cp -af examples bindir
+	@cd modules && make && cd -
 
 clean:
 	rm -f cdvws
