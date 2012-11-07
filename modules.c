@@ -31,6 +31,11 @@ char *modules_get_directory(void)
 
 int module_load(char *libname)
 {
+	typedef void (*tProcess)(void);
+	void *process2 = NULL;
+	void *lib = NULL;
+	tProcess proc;
+
 	if (access(libname, F_OK) != 0) {
 		DPRINTF("%s: Cannot find module '%s'\n", __FUNCTION__, libname);
 		return -ENOENT;
@@ -38,30 +43,24 @@ int module_load(char *libname)
 
 	DPRINTF("%s: Loading module '%s'\n", __FUNCTION__, libname);
 
-/*
-	void *lib = NULL;
-	typedef int (*tIsApplicableFunc) (void);
-	void *pIsApplicable = NULL;
-
 	lib = dlopen(libname, RTLD_LAZY);
 	if (lib == NULL) {
 		DPRINTF("%s: Cannot load library '%s'", __FUNCTION__, libname);
 		return -ENOENT;
 	}
 
-	pIsApplicable = dlsym(lib, "cdv_is_applicable");
-	if (pIsApplicable == NULL) {
-		DPRINTF("%s: Cannot read 'is applicable' symbol from library %s",
+	process2 = dlsym(lib, "cdvws_process");
+	if (process2 == NULL) {
+		DPRINTF("%s: Cannot read processor symbol from library %s",
 			__FUNCTION__, libname);
 		goto cleanup;
 	}
-	tIsApplicableFunc fIsApplicable = (tIsApplicableFunc) pIsApplicable;
-	if (fIsApplicable == NULL)
-		goto cleanup;
 
+	proc = (tProcess) process2;
+
+	proc();
 cleanup:
 	dlclose(lib);
-*/
 	return 0;
 }
 

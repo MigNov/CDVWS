@@ -9,4 +9,11 @@ REGEX=-lpcre -DUSE_PCRE
 OBJECTS=cdv-main.c utils.c config.c definitions.c modules.c xml.c database.c database-internal.c sockets.c mincrypt-wrap.c handler-http.c cdvshell.c xmlrpc.c variables.c scripting.c regex.c
 
 all:
-	$(CC) -Wall -g -o cdvws $(OBJECTS) -ldl -lrt $(SSL) $(LIBXML_CFLAGS) $(LIBXML_LIBS) $(MINCRYPT) $(READLINE) $(REGEX)
+	@rm -rf ./bindir
+	@mkdir -p ./bindir/modules
+	$(CC) -Wall -g -o ./bindir/cdvws $(OBJECTS) -ldl -rdynamic -lrt $(SSL) $(LIBXML_CFLAGS) $(LIBXML_LIBS) $(MINCRYPT) $(READLINE) $(REGEX)
+	cd modules && make && cd -
+
+clean:
+	rm -f cdvws
+	rm -rf bindir

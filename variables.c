@@ -334,8 +334,10 @@ void variable_dump(void)
 		DPRINTF("Variable #%d:\n", i + 1);
 		DPRINTF("\tId: %d\n", _vars[i].id);
 		DPRINTF("\tIdParent: %d\n", _vars[i].idParent);
-		DPRINTF("\tVariable source: %s\n", (_vars[i].q_type == TYPE_QPOST) ? "POST Request" :
-			((_vars[i].q_type == TYPE_QGET) ? "GET Request" : "SCRIPT Processing"));
+		DPRINTF("\tVariable source: %s\n",
+			(_vars[i].q_type == TYPE_QPOST) ? "POST Request" :
+			((_vars[i].q_type == TYPE_QGET) ? "GET Request" :
+			((_vars[i].q_type == TYPE_MODULE) ? "MODULE Processing" : "SCRIPT Processing")));
 		DPRINTF("\tName: %s\n", _vars[i].name ? _vars[i].name : "<null>");
 		DPRINTF("\tAllow overwrite: %d (local %d)\n", variable_get_overwrite(_vars[i].name),
 				 _vars[i].allow_overwrite);
@@ -377,6 +379,7 @@ int variable_lookup_name_idx(char *name, char *type, int idParent)
 				((type == NULL) || (strcasecmp(type, "any") == 0))
 				|| ((_vars[i].q_type == TYPE_QPOST) && (strcasecmp(type, "post") == 0)))
 				|| ((_vars[i].q_type == TYPE_QGET) && (strcasecmp(type, "get") == 0))
+				|| ((_vars[i].q_type == TYPE_MODULE) && (strcasecmp(type, "module") == 0))
 				))
 			return i;
 

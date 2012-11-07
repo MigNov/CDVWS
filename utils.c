@@ -26,6 +26,7 @@ int first_initialize(int enabled)
 	_vars_num = 0;
 	_var_overwrite = 0;
 	_perf_measure = 0;
+	_script_in_condition_and_met = -1;
 	gIO = NULL;
 	gFd = -1;
 	gHttpHandler = 0;

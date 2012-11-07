@@ -17,6 +17,7 @@
 #define TYPE_QGET	0x01
 #define TYPE_QPOST	0x02
 #define TYPE_QSCRIPT	0x04
+#define TYPE_MODULE	0x08
 
 #include <time.h>
 #include <stdio.h>

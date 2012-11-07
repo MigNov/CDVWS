@@ -365,6 +365,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 				desc_printf(io, cfd, "Load command help:\n\n"
 					"load xml <filename>\t- load XML file <filename> into memory\n"
 					"load project <filename>\t- load project file <filename> into memory\n"
+					"load module <filename>\t- load module from <filename> and process it\n"
 					"\n");
 			else
 				desc_printf(io, cfd, "Syntax: load <type> <filename>\n");
@@ -380,6 +381,10 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 						desc_printf(io, cfd, "XML file %s loaded successfully\n", t.tokens[2]);
 					else
 						desc_printf(io, cfd, "Error: Cannot load XML file %s\n", t.tokens[2]);
+				}
+				else
+				if (strcmp(t.tokens[1], "module") == 0) {
+					module_load(t.tokens[2]);
 				}
 				else
 				if (strcmp(t.tokens[1], "project") == 0) {
