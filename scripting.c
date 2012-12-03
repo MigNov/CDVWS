@@ -170,8 +170,10 @@ int _script_builtin_function(char *var, char *fn, char *args)
 
 					if (tmp != NULL)
 						instr = replace(instr, "%s", tmp);
-					else
-						desc_printf(gIO, gFd, "Variable \"%s\" not found\n", trim(t2.tokens[i]));
+					else {
+						instr = replace(instr, "%s", "NULL");
+						DPRINTF("%s: Variable \"%s\" not found\n", __FUNCTION__, trim(t2.tokens[i]));
+					}
 				}
 
 				while (strstr(instr, "\\n") != NULL)
