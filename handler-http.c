@@ -1,5 +1,6 @@
-#define DEBUG_HTTP_HANDLER
 #include "cdvws.h"
+
+//#define DEBUG_MSG_WAIT
 
 #ifdef DEBUG_HTTP_HANDLER
 #define DPRINTF(fmt, ...) \
@@ -9,9 +10,9 @@ do { fprintf(stderr, "[cdv/http-handler] " fmt , ## __VA_ARGS__); } while (0)
 do {} while(0)
 #endif
 
-void http_host_header(BIO *io, int connected, int error_code, char *mt, char *cookie, int len)
+void http_host_header(BIO *io, int connected, int error_code, char *host, char *mt, char *cookie, char *realm, int len)
 {
-	char tmp[TCP_BUF_SIZE] = { 0 };
+	char tmp[TCP_BUF_SIZE_SMALL] = { 0 };
 
 	if (mt == NULL)
 		mt = strdup( "application/octet-stream" );
@@ -37,6 +38,8 @@ void http_host_header(BIO *io, int connected, int error_code, char *mt, char *co
 
 	strcat(tmp, "\nContent-Type: ");
 	strcat(tmp, mt);
+	strcat(tmp, "\nHost: ");
+	strcat(tmp, host);
 
 	if (len > 0) {
 		char cl[16] = { 0 };
@@ -51,15 +54,33 @@ void http_host_header(BIO *io, int connected, int error_code, char *mt, char *co
 		strcat(tmp, cookie);
 	}
 
+	if (realm != NULL) {
+/*
+		if (strcmp(realm, "<NEGOTIATE>") == 0)
+			strcat(tmp, "\nWWW-Authenticate: Negotiate");
+		else {
+			strcat(tmp, "\nWWW-Authenticate: Basic realm=\"");
+			strcat(tmp, realm);
+			strcat(tmp, "\"");
+		}
+*/
+		strcat(tmp, "\nWWW-Authenticate: Negotiate");
+		strcat(tmp, "\nWWW-Authenticate: Basic realm=\"");
+		strcat(tmp, realm);
+		strcat(tmp, "\"");
+	}
+
 	strcat(tmp, "\n\n");
+
+	DPRINTF("Sending header:\n%s\n", tmp);
 
 	write_common(io, connected, tmp, strlen(tmp));
 }
 
-int http_host_put_file(BIO *io, int connected, char *path, char *cookies)
+int http_host_put_file(BIO *io, int connected, char *host, char *path, char *cookies)
 {
 	int fd;
-	char tmp[TCP_BUF_SIZE] = { 0 };
+	char tmp[TCP_BUF_SIZE_SMALL] = { 0 };
 	char *mt = NULL;
 	long size = -1, len = -1;
 
@@ -68,8 +89,8 @@ int http_host_put_file(BIO *io, int connected, char *path, char *cookies)
 
 	mt = get_mime_type(path);
 	fd = open(path, O_RDONLY);
-	http_host_header(io, connected, HTTP_CODE_OK, mt, cookies, 0);
-	free(mt);
+	http_host_header(io, connected, HTTP_CODE_OK, host, mt, cookies, myRealm, 0);
+	mt = utils_free("host.http_host_put_file.mt", mt);
 
 	while ((len = read(fd, tmp, sizeof(tmp))) > 0)
 		write_common(io, connected, tmp, len);
@@ -80,13 +101,16 @@ int http_host_put_file(BIO *io, int connected, char *path, char *cookies)
 
 int http_host_unknown(BIO *io, int connected, char *host)
 {
-	char tmp[TCP_BUF_SIZE] = { 0 };
+	char tmp[TCP_BUF_SIZE_SMALL] = { 0 };
+	char tmpb[TCP_BUF_SIZE_SMALL] = { 0 };
 
-	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\n\n<html>"
-		"<head><title>Server unknown</title></head><body>"
+	snprintf(tmpb, sizeof(tmpb), "<html><head><title>Server unknown</title></head><body>"
 		"<h1>Server unknown</h1>We are sorry but server project "
 		"cannot be resolved.<br />Server address: %s<hr />Server is running on CDV "
 		"WebServer v%s</body></html>", host, VERSION);
+
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\nContent-Type: text/html\n"
+		"Content-Length: %d\n\n%s", (int)strlen(tmpb), tmpb);
 
 	write_common(io, connected, tmp, strlen(tmp));
 	return 1;
@@ -94,13 +118,16 @@ int http_host_unknown(BIO *io, int connected, char *host)
 
 int http_feature_disabled(BIO *io, int connected, char *feature)
 {
-	char tmp[TCP_BUF_SIZE] = { 0 };
+	char tmp[TCP_BUF_SIZE_SMALL] = { 0 };
+	char tmpb[TCP_BUF_SIZE_SMALL] = { 0 };
 
-	snprintf(tmp, sizeof(tmp), "HTTP/1.1 403 Forbidden\n\n<html>"
-		"<head><title>Feature disabled</title></head><body>"
+	snprintf(tmpb, sizeof(tmpb), "<html><head><title>Feature disabled</title></head><body>"
 		"<h1>Feature disabled</h1>We are sorry but feature you requested has been "
 		"disabled by system administrator.<br />Feature name: %s<hr />Server is "
 		"running on CDV WebServer v%s</body></html>", feature, VERSION);
+
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 403 Forbidden\nContent-Type: text/html\n"
+		"Content-Length: %d\n\n%s", (int)strlen(tmpb), tmpb);
 
 	write_common(io, connected, tmp, strlen(tmp));
 	return 1;
@@ -108,16 +135,19 @@ int http_feature_disabled(BIO *io, int connected, char *feature)
 
 int http_host_page_not_found(BIO *io, int connected, char *path)
 {
-	char tmp[TCP_BUF_SIZE] = { 0 };
+	char tmp[TCP_BUF_SIZE_SMALL] = { 0 };
+	char tmpb[TCP_BUF_SIZE_SMALL] = { 0 };
 
-	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\nContent-Type: text/html\n\n"
-			"<html><head><title>Not Found</title><body><h1>Not Found</h1>"
+	snprintf(tmpb, sizeof(tmpb), "<html><head><title>Not Found</title><body><h1>Not Found</h1>"
 			"We are sorry but path %s you requested cannot be found.<br /><hr />"
 			"<b><u>%s</u></b> running on CDV WebServer v%s. Please contact "
 			"site administrator <a target=\"_blank\" href=\"mailto:%s\">%s</a>."
 			"<body></html>\n",
 				path, project_info_get("name"), VERSION,
 				project_info_get("admin_mail"), project_info_get("admin_name"));
+
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 404 Not Found\nContent-Type: text/html\n"
+			"Content-Length: %d\n\n%s", (int)strlen(tmpb), tmpb);
 
 	write_common(io, connected, tmp, strlen(tmp));
 	return 1;
@@ -169,8 +199,8 @@ void http_parse_data(char *data, int tp)
 		else
 			variable_add(name, value, tp, -1, gettype(value));
 
-		free(name);
-		free(value);
+		name = utils_free("http.http_parse_data.name", name);
+		value = utils_free("http.http_parse_data.value", value);
 	}
 	free_tokens(t);
 }
@@ -248,7 +278,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 
 				if (tmp != NULL) {
 					params_post = strdup(tmp);
-					free(tmp);
+					tmp = utils_free("http.cookies", tmp);
 				}
 			}
 		}
@@ -258,8 +288,11 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 
 	free_tokens(t);
 
-	if (host == NULL)
+	if (host == NULL) {
+		method = utils_free("http.method", method);
+		path = utils_free("http.path", path);
 		return http_host_unknown(io, connected, "unknown");
+	}
 
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
@@ -285,7 +318,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			snprintf(fn, sizeof(fn), "/tmp/cdvdb-%s", cdvcookie);
 		}
 
-		tmp = (char *)malloc( strlen("CDVCookie=;") + strlen(cdvcookie) );
+		tmp = (char *)utils_alloc( "handler-http.process_request_common.cdvcookie", strlen("CDVCookie=;") + strlen(cdvcookie) );
 		sprintf(tmp, "CDVCookie=%s\n", cdvcookie);
 		cookie = tmp;
 
@@ -304,16 +337,23 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 
 	/* First check if user requires shell access */
 	if (strncmp(path, "/shell", 6) == 0) {
-		if (_shell_enabled == 0)
+		if (_shell_enabled == 0) {
+			method = utils_free("http.method", method);
+			path = utils_free("http.path", path);
+			cleanup();
 			return http_feature_disabled(io, connected, "Internal WebShell");
+		}
 
 		if (strncmp(path, "/shell@", 7) == 0) {
 			char *str = strdup( replace(replace(path + 7, "%20", " "), "%2F", "/") );
-			http_host_header(io, connected, HTTP_CODE_OK, "text/html", cookie, 0);
+			http_host_header(io, connected, HTTP_CODE_OK, host, "text/html", cookie, myRealm, 0);
 			if (strncmp(str, "idb-", 4) == 0)
 				process_idb_command(utils_get_time( TIME_CURRENT), io, connected, str + 4);
 			else
 				process_shell_command(utils_get_time( TIME_CURRENT), io, connected, str, ua, host);
+			method = utils_free("http.method", method);
+			path = utils_free("http.path", path);
+			cleanup();
 			return 1;
 		}
 		else {
@@ -326,17 +366,32 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			else
 				snprintf(loc, sizeof(loc), "%s%s", buf, path);
 
-			if (access(loc, R_OK) == 0)
-				return http_host_put_file(io, connected, loc, cookie);
+			if (access(loc, R_OK) == 0) {
+				method = utils_free("http.method", method);
+				path = utils_free("http.path", path);
+				return http_host_put_file(io, connected, host, loc, cookie);
+			}
 		}
 
+		method = utils_free("http.method", method);
+		path = utils_free("http.path", path);
+		cleanup();
 		return http_host_unknown(io, connected, "Internal WebShell");
 	}
 
-	if (find_project_for_web("examples", host) != 0)
+	if (find_project_for_web("examples", host) != 0) {
+		method = utils_free("http.method", method);
+		path = utils_free("http.path", path);
+		cleanup();
 		return http_host_unknown(io, connected, host);
+	}
 
 	DPRINTF("Host %s is being served by PID #%d\n", host, getpid());
+
+	#ifdef DEBUG_MSG_WAIT
+	DPRINTF("***** To debug this process please run: gdb -p %d *****\n", getpid());
+	sleep(10);
+	#endif
 
 	found = 0;
 	if (project_info_get("path_xmlrpc") != NULL) {
@@ -345,7 +400,10 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		if (strcmp(xmlrpc, path) == 0) {
 			char *xml = strstr(buf, "\n<?xml");
 			if (xml == NULL) {
-				http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, "text/html", NULL, 0);
+				http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, host, "text/html", NULL, myRealm, 0);
+				method = utils_free("http.method", method);
+				path = utils_free("http.path", path);
+				cleanup();
 				return 1;
 			}
 
@@ -363,14 +421,51 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 						"<member><name>faultString</name><value><string>Invalid input data."
 						"</string></value></member></struct></value></fault></methodResponse>");
 
-			http_host_header(io, connected, HTTP_CODE_OK, "text/xml", NULL, strlen(data));
+			http_host_header(io, connected, HTTP_CODE_OK, host, "text/xml", NULL, myRealm, strlen(data));
 			DPRINTF("Returning XMLRPC result: '%s'\n", data);
 			write_common(io, connected, data, strlen(data));
-			free(data);
+			data = utils_free("http.data" ,data);
+			path = utils_free("http.path", path);
+			method = utils_free("http.method", method);
 			cleanup();
 			return 1;
 		}
 	}
+
+	#ifdef USE_KERBEROS
+	if (project_info_get("kerberos_secure_path") != NULL) {
+		char *ksd = project_info_get("kerberos_secure_path");
+		if (strncmp(path, ksd, strlen(ksd)) == 0) {
+			char *c = http_get_authorization(buf, host, project_info_get("kerberos_keytab"), project_info_get("kerberos_realm"));
+			if (c == NULL) {
+				char *err = "<h1>Unauthorized!</h1>";
+
+				http_host_header(io, connected, HTTP_CODE_UNAUTHORIZED, host, "text/html", NULL,
+					project_info_get("kerberos_realm_fallback"), strlen(err));
+				write_common(io, connected, err, strlen(err));
+				DPRINTF("Message sent\n");
+				method = utils_free("http.method", method);
+				path = utils_free("http.path", path);
+				cleanup();
+				return 1;
+			}
+			else {
+				if (strcmp(c, "REQAUTH") == 0) {
+					char *err = "<h1>Unauthorized!</h1>";
+
+					http_host_header(io, connected, HTTP_CODE_UNAUTHORIZED, host, "text/html", NULL,
+						project_info_get("kerberos_realm_fallback"), strlen(err));
+					write_common(io, connected, err, strlen(err));
+				}
+				else {
+					DPRINTF("%s: User is %s. Setting USERNAME variable\n", __FUNCTION__, c);
+
+					variable_add_fl("USERNAME", c, TYPE_MODAUTH, 0, TYPE_STRING, 1);
+				}
+			}
+		}
+	}
+	#endif
 
 	http_parse_data_getpost(params_get, params_post);
 
@@ -383,10 +478,10 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 			snprintf(loc, sizeof(loc), "%s/%s%s", tmp, dir, path);
 			DPRINTF("%s: Real file is '%s'\n", __FUNCTION__, loc);
 			if (access(loc, R_OK) == 0)
-				found = (http_host_put_file(io, connected, loc, cookie) != 0);
-			free(tmp);
+				found = (http_host_put_file(io, connected, host, loc, cookie) != 0);
+			tmp = utils_free("http.tmp", tmp);
 		}
-		free(dir);
+		dir = utils_free("http.dir", dir);
 	}
 
 	/* Apply scripting only for .html requests for now - may be altered later */
@@ -401,13 +496,16 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 					snprintf(loc, sizeof(loc), "%s/%s%s.cdv", tmp, dir, filename);
 					DPRINTF("%s: Script file is '%s'\n", __FUNCTION__, loc);
 					script_set_descriptors(io, connected, 1);
+					gHost = strdup(host);
 					if (run_script(loc) != 0) {
-						http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, "text/html", NULL, 0);
+						http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, host, "text/html", NULL, myRealm, 0);
 						cleanup();
 						return 1;
 					}
 
 					DPRINTF("%s: Script run successfully\n", __FUNCTION__);
+					method = utils_free("http.method", method);
+					path = utils_free("http.path", path);
 					cleanup();
 					return 1;
 				}
@@ -421,6 +519,8 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	if (found == 0)
 		http_host_page_not_found(io, connected, path);
 
+	method = utils_free("http.method", method);
+	path = utils_free("http.path", path);
 	cleanup();
 	return 1;
 }

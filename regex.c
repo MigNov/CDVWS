@@ -1,5 +1,4 @@
 #ifdef USE_PCRE
-#define DEBUG_REGEX
 
 #include "cdvws.h"
 
@@ -59,7 +58,7 @@ int _regex_match(char *regex, char *str, char **matches, int *match_count)
 			}
 			//DPRINTF("%s: Match #%2d: %.*s\n", __FUNCTION__, i, ovector[2*i+1] - ovector[2*i], str + ovector[2*i]);
 			nmatches++;
-			free(data);
+			data = utils_free("regex._regex_match.data", data);
 		}
 		offset = ovector[1];
 	}
@@ -145,7 +144,7 @@ int regex_parse(char *xmlFile)
 
 				if (regex_exists(match) == 0) {
 					if (_tregexs == NULL) {
-						_tregexs = (tRegExs *)malloc( sizeof(tRegExs) );
+						_tregexs = (tRegExs *)utils_alloc( "regex.regex_parse._tregexs", sizeof(tRegExs) );
 						_tregexs_num = 0;
 					}
 					else
@@ -156,12 +155,10 @@ int regex_parse(char *xmlFile)
 					_tregexs_num++;
 				}
 
-				xmlFree(match);
-				match = NULL;
+				match = utils_free("regex.regex_parse.match", match);
 			}
 
-			xmlFree(data);
-			data = NULL;
+			data = utils_free("regex.regex_parse.data", data);
 
 			node = node->next;
 		}
@@ -194,11 +191,8 @@ void regex_free(void)
 	int i;
 
 	for (i = 0; i < _tregexs_num; i++) {
-		free(_tregexs[i].tran);
-		free(_tregexs[i].expr);
-
-		_tregexs[i].tran = NULL;
-		_tregexs[i].expr = NULL;
+		_tregexs[i].tran = utils_free("regex.regex_free._tregexs[].tran", _tregexs[i].tran);
+		_tregexs[i].expr = utils_free("regex.regex_free._tregexs[].expr", _tregexs[i].expr);
 	}
 
 	if (_tregexs_num > 0)
@@ -232,7 +226,7 @@ char **regex_get_matches(char *str, int *num_matches)
 	if ((_tregexs_num == 0) || (num_matches == NULL))
 		return NULL;
 
-	matches = (char **)malloc( sizeof(char *) );
+	matches = (char **)utils_alloc( "regex.regex_get_matches.matches", sizeof(char *) );
 	for (i = 0; i < _tregexs_num; i++) {
 		if (_regex_match(_tregexs[i].expr, str, matches, &matchcnt)) {
 			*num_matches = matchcnt;
@@ -288,10 +282,8 @@ void regex_free_matches(char **elements, int num_elems)
 {
 	int i;
 
-	for (i = 0; i < num_elems; i++) {
-		free(elements[i]);
-		elements[i] = NULL;
-	}
+	for (i = 0; i < num_elems; i++)
+		elements[i] = utils_free("regex.regex_free_matches.elements[]", elements[i]);
 
 	if (num_elems > 0)
 		DPRINTF("%s: %d elements freed\n", __FUNCTION__, num_elems);

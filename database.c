@@ -1,5 +1,3 @@
-#define DEBUG_DB
-
 #include "cdvws.h"
 
 #ifdef DEBUG_DB

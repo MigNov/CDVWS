@@ -1,4 +1,3 @@
-#define DEBUG_MAIN
 #include "cdvws.h"
 
 #define	DATADIR	"cdvdata/db"
@@ -41,7 +40,7 @@ int test_idb(void)
 	char **sel_fields = NULL;
 	tTableDataInput *where_fields = NULL;
 
-	fd = malloc( num_fds * sizeof(tTableFieldDef) );
+	fd = utils_alloc( "main.test_idb.fd", num_fds * sizeof(tTableFieldDef) );
 	memset(fd, 0, num_fds * sizeof(tTableFieldDef));
 
 	for (i = 0; i < num_fds; i++) {
@@ -55,7 +54,7 @@ int test_idb(void)
 		return -1;
 	}
 
-	tdi = malloc( num_fds * sizeof(tTableDataInput) );
+	tdi = utils_alloc( "main.test_idb.tdi", num_fds * sizeof(tTableDataInput) );
 	memset(tdi, 0, num_fds * sizeof(tTableDataInput) );
 
 	for (i = 0; i < num_fds; i++) {
@@ -84,7 +83,7 @@ int test_idb(void)
 		printf("Error %d on idb_create_table\n", err);
 		return -1;
 	}
-	free(fd);
+	fd = utils_free("main.test_idb", fd);
 
 	for (i = 0; i < num_fds; i++) {
 		(tdi[i].iValue)++;
@@ -118,9 +117,9 @@ int test_idb(void)
 
 	idb_save("cdvdata/db/test.cdb");
 
-	sel_fields = (char **)malloc( 2 * sizeof(char *));
-	sel_fields[0] = (char *)malloc( 50 * sizeof(char));
-	sel_fields[1] = (char *)malloc( 50 * sizeof(char));
+	sel_fields = (char **)utils_alloc( "main.test_idb.sel_fields", 2 * sizeof(char *));
+	sel_fields[0] = (char *)utils_alloc( "main.test_idb.sel_fields[0]", 50 * sizeof(char));
+	sel_fields[1] = (char *)utils_alloc( "main.test_idb.sel_fields[1]", 50 * sizeof(char));
 	strcpy(sel_fields[0], "field-tab2-1");
 	strcpy(sel_fields[1], "field-tab2-2");
 
@@ -130,7 +129,7 @@ int test_idb(void)
 
 	DPRINTF("%s: Applying condition (field-tab2-1 == test)\n", __FUNCTION__);
 
-	where_fields = (tTableDataInput *)malloc( sizeof(tTableDataInput) );
+	where_fields = (tTableDataInput *)utils_alloc( "main.test_idb.where_fields", sizeof(tTableDataInput) );
 	where_fields[0].name = strdup("field-tab2-1");
 	where_fields[0].sValue = strdup("test");
 
@@ -142,10 +141,10 @@ int test_idb(void)
 
 	idb_results_dump( tds );
 
-	free(where_fields);
-	free(sel_fields[0]);
-	free(sel_fields[1]);
-	free(sel_fields);
+	where_fields = utils_free("main.where_fields", where_fields);
+	sel_fields[0] = utils_free("main.sel_fields[0]", sel_fields[0]);
+	sel_fields[1] = utils_free("main.sel_fields[1]", sel_fields[1]);
+	sel_fields = utils_free("main.sel_fields", sel_fields);
 
 	return 0;
 }
@@ -204,9 +203,30 @@ void atex(void)
 	total_cleanup();
 }
 
+void test_alloc(void)
+{
+	char *s = utils_alloc( "main.test_alloc", 1024 );
+
+	s = utils_free("main.test_alloc.s", s);
+	s = utils_free("main.test_alloc.s", s);
+}
+
+void show_info_banner(void)
+{
+	printf("CDV WebServer v%s (%s minCrypt support, %s PCRE support, %s GNU Readline support, %s Kerberos 5 support over GSS-API)\n\n", VERSION,
+		USE_MINCRYPT ? "with" : "without",
+		USE_PCRE ? "with" : "without",
+		USE_READLINE ? "with" : "without",
+		USE_KERBEROS ? "with" : "without");
+}
+
 int main(int argc, char *argv[])
 {
 	int i = 1;
+
+	show_info_banner();
+
+	test_alloc();
 
 	atexit( atex );
 	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0)) {
@@ -267,7 +287,7 @@ int main(int argc, char *argv[])
 		printf("\tOriginal:\t%s\n", str);
 		trans = regex_format_new_string(str);
 		printf("\tTranslation:\t%s\n", trans ? trans : "<null>");
-		free(trans);
+		trans = utils_free("main.main.trans", trans);
 
 		return 1;
 	}

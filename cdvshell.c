@@ -1,4 +1,3 @@
-#define DEBUG_SHELL
 #include "cdvws.h"
 
 #ifdef DEBUG_SHELL
@@ -12,7 +11,6 @@ do {} while(0)
 #ifdef USE_READLINE
 void readline_init(char *filename)
 {
-	int ret;
 	char *fn = NULL;
 
 	using_history();
@@ -35,26 +33,26 @@ void readline_init(char *filename)
 
 	if ((history_length > 0)
 		&& (_shell_history_file != NULL)) {
-		ret = write_history( _shell_history_file );
-		DPRINTF("%s: Writing history to %s returned code %d\n",
-			__FUNCTION__, _shell_history_file, ret);
+		write_history( _shell_history_file );
+		DPRINTF("%s: Writing history to %s\n",
+			__FUNCTION__, _shell_history_file);
 	}
 
 	if (filename == NULL) {
 		DPRINTF("%s: Freeing history file\n",
 			__FUNCTION__);
-		free( _shell_history_file );
+		_shell_history_file = utils_free( "cdvshell.readline_init._shell_history_file", _shell_history_file );
 		_shell_history_file = NULL;
 		return;
 	}
 
 	clear_history();
-	ret = read_history(fn);
-	DPRINTF("%s: Reading history from %s returned code %d\n",
-		__FUNCTION__, filename, ret);
+	read_history(fn);
+	DPRINTF("%s: Reading history from %s\n",
+		__FUNCTION__, filename);
 
 	_shell_history_file = strdup( fn );
-	free(fn);
+	fn = utils_free("cdvshell.readline_init.fn", fn);
 }
 
 void readline_set_max(int max)
@@ -71,10 +69,10 @@ char *readline_read(char *prompt)
 {
 	char *tmp = readline(prompt);
 
-	if (strcmp(tmp, "quit") != 0)
+	if ((strlen(tmp) > 0) && (strcmp(tmp, "quit") != 0))
 		add_history(tmp);
 
-	return trim(tmp);
+	return tmp;
 }
 
 void readline_unlink(char *filename)
@@ -99,7 +97,7 @@ void readline_unlink(char *filename)
 		fn = strdup( filename );
 
 	unlink(fn);
-	free(fn);
+	fn = utils_free("cdvshell.readline_unlink.fn", fn);
 }
 
 #else
@@ -281,7 +279,7 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 			char tmp2[4096] = { 0 };
 
 			snprintf(tmp2, sizeof(tmp2), "SET FILENAME %s", tmp);
-			free(tmp);
+			tmp = utils_free("cdvshell.process_idb_command.tmp", tmp);
 
 			idb_query(tmp2);
 			ret = idb_query(str);
@@ -327,6 +325,7 @@ int idb_shell(BIO *io, int cfd)
 			str = desc_read(io, cfd);
 
 		ret = process_idb_command(ts, io, cfd, str);
+		str = utils_free("cdvshell.idb_shell.str", str);
 		if (ret == 1)
 			break;
 	}
@@ -490,7 +489,11 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 	}
 	else
 	if (strcmp(str, "version") == 0) {
-		desc_printf(io, cfd, "CDV WebServer version: %s\n\n", VERSION);
+		desc_printf(io, cfd, "CDV WebServer version: %s\n", VERSION);
+		desc_printf(io, cfd, "MinCrypt support: %s\n", USE_MINCRYPT ? "yes" : "no");
+		desc_printf(io, cfd, "PCRE support: %s\n", USE_PCRE ? "yes" : "no" );
+		desc_printf(io, cfd, "GNU Readline support: %s\n", USE_READLINE ? "yes" : "no");
+		desc_printf(io, cfd, "Kerberos 5 support over GSS-API: %s\n\n", USE_KERBEROS ? "yes" : "no");
 		desc_printf(io, cfd, "No modules found\n");
 	}
 	else
@@ -657,9 +660,9 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 									t.tokens[1]);
 
 							write(fd[1], "ERR", 3);
-							free(s1);
-							free(s2);
-							free(s3);
+							s1 = utils_free("cdvshell.process_shell.command.s1", s1);
+							s2 = utils_free("cdvshell.process_shell_command.s2", s2);
+							s3 = utils_free("cdvshell.process_shell_command.s3", s3);
 
 							exit(0);
 						}
@@ -806,7 +809,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			else
 				desc_printf(io, cfd, "Mime type for %s is %s\n", t.tokens[1], tmp);
 
-			free(tmp);
+			tmp = utils_free("cdvshell.mime.tmp", tmp);
 		}
 		else
 			desc_printf(io, cfd, "Syntax: mime <filename>\n");
@@ -831,8 +834,8 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 
 					desc_printf(io, cfd, "%s\n", var ? var : "No value found");
 
-					free(var);
-					free(str);
+					var = utils_free("cdvshell.print.var", var);
+					str = utils_free("cdvshell.print.str", str);
 					return 0;
 				}
 
@@ -854,7 +857,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 					found = 1;
 				}
 
-				free(cfg);
+				cfg = utils_free("cdvshell.print.cfg", cfg);
 
 				if (found == 0) {
 					int num = -1;
@@ -881,7 +884,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 	if (strlen(str) > 0)
 		desc_printf(io, cfd, "Error: Unknown command '%s'\n", str);
 
-	free(str);
+	str = utils_free("cdvshell.str", str);
 
 	return ret;
 }

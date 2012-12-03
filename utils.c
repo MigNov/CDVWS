@@ -1,5 +1,9 @@
 #define DEBUG_UTILS
 
+/* Debug memory allocator routines (incl. free()) */
+//#define DEBUG_MEMORY
+//#define DEBUG_MEMORY_NULL
+
 /* Those functions are called very often so it could be disabled */
 #define DEBUG_TRIM	0
 #define DEBUG_TOKENIZER	0
@@ -9,8 +13,23 @@
 #ifdef DEBUG_UTILS
 #define DPRINTF(fmt, args...) \
 do { fprintf(stderr, "[cdv/utils       ] " fmt , args); } while (0)
+	#ifdef DEBUG_MEMORY
+		#define DPRINTF_MEM(fmt, args...) \
+		do { fprintf(stderr, "[cdv/utils-mem   ] " fmt , args); } while (0)
+		#ifdef DEBUG_MEMORY_NULL
+			#define DPRINTF_MEM_NULL(fmt, args...) \
+			do { fprintf(stderr, "[cdv/utils-mem-0 ] " fmt , args); } while (0)
+		#else
+			#define DPRINTF_MEM_NULL(fmt, args...) do {} while(0)
+		#endif
+	#else
+		#define DPRINTF_MEM(fmt, args...) do {} while(0)
+		#define DPRINTF_MEM_NULL(fmt, args...) do {} while(0)
+	#endif
 #else
 #define DPRINTF(fmt, args...) do {} while(0)
+#define DPRINTF_MEM(fmt, args...) do {} while(0)
+#define DPRINTF_MEM_NULL(fmt, args...) do {} while(0)
 #endif
 
 int first_initialize(int enabled)
@@ -30,6 +49,7 @@ int first_initialize(int enabled)
 	gIO = NULL;
 	gFd = -1;
 	gHttpHandler = 0;
+	myRealm = NULL;
 
 	return 0;
 }
@@ -97,7 +117,7 @@ int get_boolean(char *val)
 	if ((strcmp(val2, "0") == 0)
 		|| (strcmp(val2, "false") == 0))
 		ret = 0;
-	free(val2);
+	val2 = utils_free("utils.get_boolean.val2", val2);
 
 	return ret;
 }
@@ -166,7 +186,7 @@ char *generate_hex_chars(int len)
 	char *tmp = NULL;
 	int i;
 
-	tmp = (char *)malloc( (len + 1) * sizeof(char) );
+	tmp = (char *)utils_alloc( "utils.generate_hex_chars", (len + 1) * sizeof(char) );
 	memset(tmp, 0, (len + 1) * sizeof(char));
 
 	for (i = 0; i < len; i++) {
@@ -196,7 +216,7 @@ unsigned char *data_fetch(int fd, int len, long *size, int extra)
 	ssize_t sz;
 	unsigned char *data = NULL;
 
-	data = (unsigned char *) malloc( (len + extra) * sizeof(unsigned char) );
+	data = (unsigned char *) utils_alloc( "utils.data_fetch", (len + extra) * sizeof(unsigned char) );
 	memset(data, 0, (len + extra) * sizeof(unsigned char));
 	sz = read(fd, data, len);
 	if (sz != len)
@@ -229,6 +249,11 @@ void project_info_init(void)
 
 	project_info.path_xmlrpc = NULL;
 	project_info.path_rewriter = NULL;
+
+	project_info.kerb_keytab = NULL;
+	project_info.kerb_secure_path = NULL;
+	project_info.kerb_realm = NULL;
+	project_info.kerb_realm_fb = NULL;
 }
 
 void project_info_fill(void)
@@ -252,6 +277,11 @@ void project_info_fill(void)
 
 	project_info.path_xmlrpc = config_get("host", "path.xmlrpc");
 	project_info.path_rewriter = config_get("host", "path.rewriter");
+
+	project_info.kerb_keytab = config_get("kerberos", "keytab");
+	project_info.kerb_secure_path = config_get("kerberos", "secure_path");
+	project_info.kerb_realm = config_get("kerberos", "realm");
+	project_info.kerb_realm_fb = config_get("kerberos", "realm_basic");
 
 	DPRINTF("%s: Project information structure set\n", __FUNCTION__);
 }
@@ -286,6 +316,26 @@ void project_info_dump(void)
 
 	if (project_info.path_xmlrpc != NULL) {
 		dump_printf("\tXMLRPC Path: %s\n", project_info.path_xmlrpc);
+		num++;
+	}
+
+	if (project_info.kerb_keytab != NULL) {
+		dump_printf("\tKerberos keytab: %s\n", project_info.kerb_keytab);
+		num++;
+	}
+
+	if (project_info.kerb_secure_path != NULL) {
+		dump_printf("\tKerberos secure path: %s\n", project_info.kerb_secure_path);
+		num++;
+	}
+
+	if (project_info.kerb_realm != NULL) {
+		dump_printf("\tKerberos realm: %s\n", project_info.kerb_realm);
+		num++;
+	}
+
+	if (project_info.kerb_realm_fb != NULL) {
+		dump_printf("\tKerberos realm for Basic authorization: %s\n", project_info.kerb_realm_fb);
 		num++;
 	}
 
@@ -373,6 +423,14 @@ char *project_info_get(char *type)
 		return strdup(project_info.cert_pub);
 	if ((project_info.path_xmlrpc != NULL) && (strcmp(type, "path_xmlrpc") == 0))
 		return strdup(project_info.path_xmlrpc);
+	if ((project_info.kerb_keytab != NULL) && (strcmp(type, "kerberos_keytab") == 0))
+		return strdup(project_info.kerb_keytab);
+	if ((project_info.kerb_secure_path != NULL) && (strcmp(type, "kerberos_secure_path") == 0))
+		return strdup(project_info.kerb_secure_path);
+	if ((project_info.kerb_realm) && (strcmp(type, "kerberos_realm") == 0))
+		return strdup(project_info.kerb_realm);
+	if ((project_info.kerb_realm_fb) && (strcmp(type, "kerberos_realm_fallback") == 0))
+		return strdup(project_info.kerb_realm_fb);
 	if ((project_info.path_rewriter != NULL) && (strcmp(type, "path_rewriter") == 0))
 		return strdup(project_info.path_rewriter);
 
@@ -381,26 +439,69 @@ char *project_info_get(char *type)
 
 void project_info_cleanup(void)
 {
-	free(project_info.name);
-	free(project_info.root_dir);
-	free(project_info.admin_name);
-	free(project_info.admin_mail);
-	free(project_info.file_config);
-	free(project_info.dir_defs);
-	free(project_info.dir_views);
-	free(project_info.dir_files);
-	free(project_info.dir_scripts);
-	free(project_info.host_http);
-	free(project_info.host_secure);
-	free(project_info.cert_dir);
-	free(project_info.cert_root);
-	free(project_info.cert_pk);
-	free(project_info.cert_pub);
-	free(project_info.path_xmlrpc);
-	free(project_info.path_rewriter);
+	project_info.name = utils_free("utils.project_info_cleanup", project_info.name);
+	project_info.root_dir = utils_free("utils.project_info_cleanup", project_info.root_dir);
+	project_info.admin_name = utils_free("utils.project_info_cleanup", project_info.admin_name);
+	project_info.admin_mail = utils_free("utils.project_info_cleanup", project_info.admin_mail);
+	project_info.file_config = utils_free("utils.project_info_cleanup", project_info.file_config);
+	project_info.dir_defs = utils_free("utils.project_info_cleanup", project_info.dir_defs);
+	project_info.dir_views = utils_free("utils.project_info_cleanup", project_info.dir_views);
+	project_info.dir_files = utils_free("utils.project_info_cleanup", project_info.dir_files);
+	project_info.dir_scripts = utils_free("utils.project_info_cleanup", project_info.dir_scripts);
+	project_info.host_http = utils_free("utils.project_info_cleanup", project_info.host_http);
+	project_info.host_secure = utils_free("utils.project_info_cleanup", project_info.host_secure);
+	project_info.cert_dir = utils_free("utils.project_info_cleanup", project_info.cert_dir);
+	project_info.cert_root = utils_free("utils.project_info_cleanup", project_info.cert_root);
+	project_info.cert_pk = utils_free("utils.project_info_cleanup", project_info.cert_pk);
+	project_info.cert_pub = utils_free("utils.project_info_cleanup", project_info.cert_pub);
+	project_info.path_xmlrpc = utils_free("utils.project_info_cleanup", project_info.path_xmlrpc);
+	project_info.path_rewriter = utils_free("utils.project_info_cleanup", project_info.path_rewriter);
+	project_info.kerb_keytab = utils_free("utils.project_info_cleanup", project_info.kerb_keytab);
+	project_info.kerb_secure_path = utils_free("utils.project_info_cleanup", project_info.kerb_secure_path);
+	project_info.kerb_realm = utils_free("utils.project_info_cleanup", project_info.kerb_realm);
+	project_info.kerb_realm_fb = utils_free("utils.project_info_cleanup", project_info.kerb_realm_fb);
 
 	/* To set to NULLs */
 	project_info_init();
+}
+
+void *utils_alloc(char *var, int len)
+{
+	void *val = NULL;
+
+	if (len <= 0) {
+		DPRINTF_MEM("%s: Invalid length argument (%d)\n", __FUNCTION__, len);
+		return NULL;
+	}
+
+	val = malloc( len );
+	if (val == NULL) {
+		DPRINTF_MEM("%s: Allocation of %d bytes failed\n", __FUNCTION__, len);
+		return NULL;
+	}
+
+	DPRINTF_MEM("%s: Setting memory to zeros\n", __FUNCTION__);
+	memset(val, 0, len);
+
+	DPRINTF_MEM("%s: Returning pointer %p (%d bytes, variable: %s)\n", __FUNCTION__, val, len, var);
+	return val;
+}
+
+void *utils_free(char *vt, void *var)
+{
+	if (var == NULL) {
+		DPRINTF_MEM_NULL("%s: Variable %s is NULL. Skipping ...\n", __FUNCTION__, vt);
+
+		return NULL;
+	}
+
+	DPRINTF_MEM("%s: Freeing variable %s at %p\n", __FUNCTION__, vt, var);
+
+	free(var);
+
+	DPRINTF_MEM("%s: Setting to variable %s pointer from %p to NULL\n", __FUNCTION__, vt, var);
+
+	return NULL;
 }
 
 int dump_set_file(char *filename)
@@ -431,7 +532,7 @@ char *replace(char *str, char *what, char *with)
 		return str;
 
 	size = strlen(str) - strlen(what) + strlen(with);
-	new = (char *)malloc( size * sizeof(char) );
+	new = (char *)utils_alloc( "utils.replace", size * sizeof(char) );
 	old = strdup(str);
 	idx = strlen(str) - strlen(part);
 	old[idx] = 0;
@@ -477,7 +578,7 @@ char *cdvStringAppend(char *var, char *val)
 
 	if (var == NULL) {
 		size = (strlen(val) + 1) * sizeof(char);
-		var = (char *)malloc( size );
+		var = (char *)utils_alloc( "utils.cdvStringAppend", size );
 		memset(var, 0, size);
 	}
 	else {
@@ -620,7 +721,7 @@ void desc_printf(BIO *io, int fd, const char *fmt, ...)
 
 		if (strstr(tmp, "PERF:") != NULL)
 			write_common(io, fd, "</font></i>", 11);
-		//free(tmp);
+		//utils_free(tmp);
 	}
 	else
 		write_common(io, fd, buf, strlen(buf));
@@ -633,7 +734,7 @@ char *desc_read(BIO *io, int fd)
 	char buf[1024] = { 0 };
 
 	tlen = 0;
-	ret = (char *)malloc( sizeof(char) );
+	ret = (char *)utils_alloc( "utils.desc_read", sizeof(char) );
 
 	if (io != NULL) {
 		while ((len = BIO_gets(io, buf, sizeof(buf))) > 0) {
@@ -739,7 +840,7 @@ int load_project(char *project_file)
 	}
 
 	snprintf(path, sizeof(path), "%s/%s", project_basedir, tmp);
-	free(tmp);
+	tmp = utils_free("utils.load_project.tmp", tmp);
 	tmp = NULL;
 
 	if ((err = config_load(path, NULL)) != 0) {
@@ -756,7 +857,7 @@ int load_project(char *project_file)
 	}
 
 	snprintf(path, sizeof(path), "%s/%s", project_basedir, tmp);
-	free(tmp);
+	tmp = utils_free("utils.load_project.tmp2", tmp);
 	tmp = NULL;
 
 	DPRINTF("%s: Definitions directory is '%s'\n", __FUNCTION__, path);
@@ -899,7 +1000,7 @@ tTokenizer tokenize(char *string, char *by)
 		DPRINTF("%s: Tokenizing string '%s' by '%s'\n", __FUNCTION__, string, by);
 
         tmp = strdup(string);
-        t.tokens = malloc( sizeof(char *) );
+        t.tokens = utils_alloc( "utils.tokenize", sizeof(char *) );
         for (str = tmp; ; str = NULL) {
                 token = strtok_r(str, by, &save);
                 if (token == NULL)
@@ -924,10 +1025,8 @@ void free_tokens(tTokenizer t)
 	if (DEBUG_TOKENIZER)
 		DPRINTF("%s: Freeing all tokens\n", __FUNCTION__);
 
-        for (i = 0; i < t.numTokens; i++) {
-                free(t.tokens[i]);
-                t.tokens[i] = NULL;
-        }
+        for (i = 0; i < t.numTokens; i++)
+                t.tokens[i] = utils_free("utils.free_tokens", t.tokens[i]);
 }
 
 char *trim(char *str)
@@ -1066,7 +1165,7 @@ char *process_read_handler(char *filename)
         fgets(data, sizeof(data), fp);
         fclose(fp);
 
-        free(filename);
+        filename = utils_free("utils.process_read_handler.filename", filename);
 
         return strdup(data);
 }
@@ -1115,7 +1214,7 @@ char *process_handlers(char *path)
 void utils_pid_add(int pid)
 {
 	if (_pids == NULL) {
-		_pids = (int *)malloc( sizeof(int) );
+		_pids = (int *)utils_alloc( "utils.utils_pid_add", sizeof(int) );
 		_pids_num = 0;
 	}
 	else

@@ -24,6 +24,6 @@ void cdvws_process() {
 		variable_add("module_var", "unset", TYPE_MODULE, 0, TYPE_STRING);
 	}
 
-	free(v);
+	v = utils_free("mod_test.v", v);
 }
 

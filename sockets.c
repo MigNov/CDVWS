@@ -1,4 +1,3 @@
-#define DEBUG_SOCKETS
 #include "cdvws.h"
 
 #ifdef DEBUG_SOCKETS

@@ -1,5 +1,3 @@
-#define DEBUG_SCRIPTING
-
 #include "cdvws.h"
 
 #ifdef DEBUG_SCRIPTING
@@ -118,7 +116,7 @@ int _script_builtin_function(char *var, char *fn, char *args)
 		char *str = variable_get_type_string(args, "any");
 
 		desc_printf(gIO, gFd, "%s\n", str ? str : "<null>");
-		free(str);
+		str = utils_free("scripting.dumptype.str", str);
 	}
 	else
 	if (strcmp(fn, "print") == 0) {
@@ -133,7 +131,7 @@ int _script_builtin_function(char *var, char *fn, char *args)
 			else {
 				char *var = variable_get_element_as_string(args, NULL);
 				desc_printf(gIO, gFd, "%s", var ? var : "");
-				free(var);
+				var = utils_free("scripting.print.var", var);
 			}
 		}
 	}
@@ -154,7 +152,7 @@ int _script_builtin_function(char *var, char *fn, char *args)
 					instr = replace(instr, "\\n", "\n");
 
 				desc_printf(gIO, gFd, "%s", instr);
-				free(instr);
+				instr = utils_free("scripting.printf.instr", instr);
 			}
 			else
 			if (t.numTokens == 2) {
@@ -350,7 +348,7 @@ int script_process_line(char *buf)
 			int i, num_matches;
 			char *val = NULL;
 
-			matches = (char **)malloc( sizeof(char *) );
+			matches = (char **)utils_alloc( "scripting.script_process_line.matches", sizeof(char *) );
 			_regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf, matches, &num_matches);
 
 			val = variable_get_element_as_string(trim(matches[0]), NULL);
@@ -360,8 +358,8 @@ int script_process_line(char *buf)
 				_script_in_condition_and_met = 0;
 
 			for (i = 0; i < num_matches; i++)
-				free(matches[i]);
-			free(matches);
+				matches[i] = utils_free("scripting.condition.matches[]", matches[i]);
+			matches = utils_free("scripting.condition.matches", matches);
 		}
 	}
 	else
@@ -434,8 +432,8 @@ int script_process_line(char *buf)
 		else
 			ret = -EINVAL;
 
-		free(var);
-		free(val);
+		var = utils_free("scripting.operators.var", var);
+		val = utils_free("scripting.operators.val", val);
 		free_tokens(t);
 		return ret;
 	}
@@ -483,7 +481,7 @@ int script_process_line(char *buf)
 
 					snprintf(args2, sizeof(args2), "%s", args + 1);
 					args2[ strlen(args2) - 1] = 0;
-					free(args);
+					args = utils_free("scripting.function-call.args", args);
 
 					args = strdup( args2 );
 				}
@@ -493,8 +491,8 @@ int script_process_line(char *buf)
 					DPRINTF("Function %s doesn't seem to be builtin, we should try user-defined function\n", fn);
 
 				DPRINTF("%s: Should be a function with return value\n", __FUNCTION__);
-				free(args);
-				free(fn);
+				args = utils_free("scripting.function-call.args", args);
+				fn = utils_free("scripting.function-call.fn", fn);
 
 				ret = 0;
 			}
@@ -531,8 +529,8 @@ int script_process_line(char *buf)
 		if (_script_builtin_function(NULL, fn, args) != 0)
 			DPRINTF("Function %s doesn't seem to be builtin, we should try user-defined function\n", fn);
 
-		free(args);
-		free(fn);
+		args = utils_free("scripting.function-call.args", args);
+		fn = utils_free("scripting.function-call.fn", fn);
 
 		ret = 0;
 	}
@@ -567,7 +565,7 @@ int run_script(char *filename)
 		return -EPERM;
 
 	if (gHttpHandler)
-		http_host_header(gIO, gFd, HTTP_CODE_OK, "text/html", NULL, 0);
+		http_host_header(gIO, gFd, HTTP_CODE_OK, gHost, "text/html", NULL, myRealm, 0);
 
 	while (!feof(fp)) {
 		memset(buf, 0, sizeof(buf));

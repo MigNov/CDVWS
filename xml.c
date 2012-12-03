@@ -1,4 +1,3 @@
-#define DEBUG_XML
 #define HAVE_END_AUTODUMPS
 
 #define ROOT_ELEMENT_DEFS "//page-definition"
@@ -27,11 +26,11 @@ int process_data(xmlDocPtr doc, xmlNodePtr node, char *xpath, int level, char *f
 
 		if ((data != NULL) && ((strlen(data) == 0) || (data[0] == 10))) {
 			size = strlen(xpath) + strlen((const char *)node->name) + 2;
-			newxpath = (char *)malloc( size * sizeof(char) );
+			newxpath = (char *)utils_alloc( "xml.process_data.newxpath", size * sizeof(char) );
 			snprintf(newxpath, size, "%s/%s", xpath, node->name);
 
 			process_recursive(doc, newxpath, level + 1, fn);
-			free(newxpath);
+			newxpath = utils_free("xml.process_data.newxpath", newxpath);
 		}
 		else
 		if (data != NULL) {
@@ -46,7 +45,7 @@ int process_data(xmlDocPtr doc, xmlNodePtr node, char *xpath, int level, char *f
 
 			if (!found) {
 				if (xattr == NULL)
-					xattr = (tAttr *)malloc( sizeof(tAttr) );
+					xattr = (tAttr *)utils_alloc( "xml.process_data.xattr", sizeof(tAttr) );
 				else
 					xattr = (tAttr *)realloc( xattr, (xml_numAttr + 1) * sizeof(tAttr) );
 
@@ -59,7 +58,7 @@ int process_data(xmlDocPtr doc, xmlNodePtr node, char *xpath, int level, char *f
 			}
 		}
 
-		free(data);
+		data = utils_free("xml.process_data.data", data);
 
 		node = node->next;
 	}
@@ -225,7 +224,7 @@ char **xml_get_all(char *nodename, int *oNum)
 	node = t.tokens[0];
 	name = t.tokens[1];
 
-	ret = malloc( sizeof(char *) );
+	ret = utils_alloc( "xml.xml_get_all.ret", sizeof(char *) );
 
 	for (i = 0; i < xml_numAttr; i++) {
 		if ((strcmp(xattr[i].node, node) == 0)
@@ -248,12 +247,10 @@ void xml_free_all(char **ret, int num)
 {
 	int i;
 
-	for (i = 0; i < num; i++) {
-		free(ret[i]);
-		ret[i] = NULL;
-	}
+	for (i = 0; i < num; i++)
+		ret[i] = utils_free("xml.xml_free_all.ret[]", ret[i]);
 
-	free(ret);
+	ret = utils_free("xml.xml_free_all.ret", ret);
 }
 
 int xml_cleanup(void) {
@@ -261,16 +258,16 @@ int xml_cleanup(void) {
 
 	for (i = 0; i < xml_numAttr; i++) {
 		if (xattr[i].node != NULL)
-			free(xattr[i].node);
+			xattr[i].node = utils_free("xml.xml_cleanup.xattr[].node", xattr[i].node);
 
 		if (xattr[i].name != NULL)
-			free(xattr[i].name);
+			xattr[i].name = utils_free("xml.xml_cleanup.xattr[].name", xattr[i].name);
 
 		if (xattr[i].value != NULL)
-			free(xattr[i].value);
+			xattr[i].value = utils_free("xml.xml_cleanup.xattr[].value", xattr[i].value);
 
 		if (xattr[i].filename != NULL)
-			free(xattr[i].filename);
+			xattr[i].filename = utils_free("xml.xml_cleanup.xattr[].filename", xattr[i].filename);
 
 		xattr[i].node = NULL;
 		xattr[i].name = NULL;
@@ -278,8 +275,7 @@ int xml_cleanup(void) {
 		xattr[i].filename = NULL;
 	}
 
-	//free(xattr);
-	//xattr = NULL;
+	//xattr = utils_free("xml.xml_cleanup.xattr", xattr);
 
 	return 0;
 }

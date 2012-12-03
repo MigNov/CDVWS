@@ -1,0 +1,87 @@
+Using Kerberos 5 Authentication
+===============================
+
+You have to add principals to the server where you have your Kerberos setup.
+This can be done easily by logging-in your Kerberos 5 Server machine using
+the SSH connection and then running the kadmin.local command as root.
+
+# kadmin.local
+
+This will log you in with the administrator credentials. Adding the server
+principal can be done by addprinc subcommand of the kadmin.local instance.
+This is necessary for both server and also the client that will get the
+ticket using the "kinit -fp" as a normal user (non-root user). The -fp
+flags enables the ticket forwarding which is necessary to make it working
+with the negotiation. You also have to set the negotiation realms in your
+web-browser, e.g. Firefox but this is described in the next section of
+the document.
+
+To add the server principal you usually use the random key with the
+"HTTP/<server>" name, e.g. HTTP/www.example.com for www.example.com
+credentials. The random key can be generated using the "-randkey"
+parameter of the addprinc subcommand, i.e.
+
+# kadmin.local
+kadmin.local: addprinc -randkey HTTP/www.example.com
+
+This will create the server principal for www.example.com server in
+the default realm (set in /etc/krb5.conf).
+
+Also, you may need to use another keytab (this is supported by
+CDV WebServer too) and this is being done by the ktadd command.
+
+kadmin.local: ktadd -k <path-to-krb5-keytab> <service>/<server>@<REALM>
+
+where <path-to-krb5-keytab> is the absolute or relative path to keytab
+file. You have to set CDV WebServer to point to this file if you
+would like to use it instead of default keytab file (/etc/krb5.keytab).
+
+The <service> is usually HTTP for the HTTP requests, i.e. web-server
+usage and <server> is the server, like mentioned www.example.com.
+
+You can also specify a realm if you want to and you don't want to use
+the default realm. The example is ktadd command may be as follows:
+
+kadmin.local: ktadd -k /var/cdvws/webs/www.example.com/krb5.keytab HTTP/www.example.com@EXAMPLE.COM
+
+This will create the server credential and save it to file located at
+/var/cdvws/webs/www.example.com/krb5.keytab .
+
+The file have to have permissions to allow CDV WebServer to read it.
+This could be done by using ACLs, i.e. using setfacl like:
+
+setfacl -m u:cdvws:r /var/cdvws/webs/www.example.com/krb5.keytab
+
+provided the fact the user of CDV WebServer will be named "cdvws".
+
+When edits are done, you can quit from the kadmin.local instance
+by simply typing "quit" and hitting Enter.
+
+Setting up Negotiation scheme support in Firefox
+================================================
+
+To setup the Negotiation in your Firefox instance you have to open
+all configuration options by putting the "about:config" string into
+the URL bar and hitting Enter. Firefox will show you a warning that
+you can break Firefox functionality unless you know what you're doing
+so you have to promise Firefox to be careful by clicking the
+"I'll be careful, I promise!" button ;-)
+
+After doing this, the dialog with many many configuration options
+will pop-up but we're interested only in the negotiation options so
+we filter it by typing in "negotiate" keyword into the search box.
+
+There are 2 variables we're interested in:
+
+1) network.negotiate-auth.delegation-uris
+2) network.negotiate-auth.trusted-uris
+
+To both of them we will write the ".example.com" or the part of the
+server name to use negotiation for. Firefox will then use try to use
+the Negotiation scheme. CDV WebServer uses Negotiation scheme along
+with the HTTP Basic authentication (this is useful when you don't
+have a valid ticket as we can't rely on Negotiation scheme only).
+
+In the CDV WebServer the Kerberos 5 Negotiated username will be
+stored in the USERNAME readonly variable coming from the source
+of "AUTH MODULE Processing", TYPE_MODAUTH.

@@ -12,6 +12,7 @@
 #define TYPE_QPOST      0x02
 #define TYPE_QSCRIPT    0x04
 #define TYPE_MODULE	0x08
+#define TYPE_MODAUTH	0x10
 
 #include <time.h>
 #include <stdio.h>

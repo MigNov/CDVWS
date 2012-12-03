@@ -1,7 +1,49 @@
 #ifndef CDVWS_H
 #define CDVWS_H
 
+#define DEBUG_ALL
+
 #define VERSION		"0.0.1"
+
+#ifdef DEBUG_NONE
+#undef DEBUG_MAIN
+#undef DEBUG_SHELL
+#undef DEBUG_CONFIG
+#undef DEBUG_IDB
+#undef DEBUG_DB
+#undef DEBUG_DEFS
+#undef DEBUG_HTTP_HANDLER
+#undef DEBUG_SSL
+#undef DEBUG_MINCRYPT
+#undef DEBUG_MODULES
+#undef DEBUG_REGEX
+#undef DEBUG_SCRIPTING
+#undef DEBUG_SOCKETS
+#undef DEBUG_UTILS
+#undef DEBUG_VARIABLES
+#undef DEBUG_XML
+#undef DEBUG_XMLRPC
+#endif
+
+#ifdef DEBUG_ALL
+#define DEBUG_MAIN
+#define DEBUG_SHELL
+#define DEBUG_CONFIG
+#define DEBUG_IDB
+#define DEBUG_DB
+#define DEBUG_DEFS
+#define DEBUG_HTTP_HANDLER
+#define DEBUG_SSL
+#define DEBUG_MINCRYPT
+#define DEBUG_MODULES
+#define DEBUG_REGEX
+#define DEBUG_SCRIPTING
+#define DEBUG_SOCKETS
+#define DEBUG_UTILS
+#define DEBUG_VARIABLES
+#define DEBUG_XML
+#define DEBUG_XMLRPC
+#endif
 
 /* For now it doesn't work without internal DB */
 #define USE_INTERNAL_DB
@@ -18,6 +60,7 @@
 #define TYPE_QPOST	0x02
 #define TYPE_QSCRIPT	0x04
 #define TYPE_MODULE	0x08
+#define TYPE_MODAUTH	0x10
 
 #include <time.h>
 #include <stdio.h>
@@ -75,8 +118,10 @@ unsigned char *mincrypt_base64_encode(const char *in, size_t *size);
 unsigned char *mincrypt_base64_decode(const char *in, size_t *size);
 #endif
 
+#define	TCP_BUF_SIZE		1048576
+#define	TCP_BUF_SIZE_SMALL	1024
+
 #ifdef USE_SSL
-#define TCP_BUF_SIZE	1048576
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -151,6 +196,10 @@ typedef struct tProjectInformation {
 	char *cert_pub;
 	char *path_xmlrpc;
 	char *path_rewriter;
+	char *kerb_keytab;
+	char *kerb_secure_path;
+	char *kerb_realm;
+	char *kerb_realm_fb;
 } tProjectInformation;
 
 typedef struct tAttr {
@@ -328,6 +377,7 @@ typedef struct tVariables {
 	short allow_overwrite;
 	short deleted;
 	short fixed_type;
+	short readonly;
 } tVariables;
 
 tVariables *_vars;
@@ -335,8 +385,11 @@ int _vars_num;
 int _var_overwrite;
 short _perf_measure;
 short _script_in_condition_and_met;
+char *gHost;
+char *myRealm;
 
 /* Variable manipulation stuff */
+int variable_add_fl(char *name, char *value, int q_type, int idParent, int type, int readonly);
 int variable_add(char *name, char *value, int q_type, int idParent, int type);
 int variable_lookup_name_idx(char *name, char *type, int idParent);
 void variable_dump(void);
@@ -356,7 +409,7 @@ int variable_create(char *name, char *type);
 /* Scripts */
 int run_script(char *filename);
 void http_parse_data(char *data, int tp);
-void http_host_header(BIO *io, int connected, int error_code, char *mt, char *cookie, int len);
+void http_host_header(BIO *io, int connected, int error_code, char *host, char *mt, char *cookie, char *realm, int len);
 int _regex_match(char *regex, char *str, char **matches, int *match_count);
 int script_process_line(char *buf);
 
@@ -440,6 +493,8 @@ int is_string(char *val);
 int is_comment(char *val);
 int get_type_from_string(char *type, int allow_autodetection);
 char *get_type_string(int id);
+void *utils_alloc(char *var, int len);
+void *utils_free(char *vt, void *var);
 
 /* Project related options */
 void project_info_init(void);
@@ -506,5 +561,13 @@ void wrap_mincrypt_cleanup(void);
 int run_shell(BIO *io, int cfd);
 int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char *ua, char *path);
 int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str);
+
+/* Auth functions */
+char *http_get_authorization(char *buf, char *host, char *keytab, char *kerb_realm);
+unsigned char *krb5_client_ticket(char *service);
+
+/* Base64 functions */
+unsigned char *base64_encode(const char *in, size_t *size);
+unsigned char *base64_decode(const char *in, size_t *size);
 
 #endif

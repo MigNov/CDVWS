@@ -1,12 +1,18 @@
 # Hosting options
-host.http = localhost:2305
-host.secure = localhost:2306
+host.http = example.com
+host.secure = example.com
 host.certificate.dir = certs
 host.certificate.root = rootcert.pem
 host.certificate.private = server-key.private
 host.certificate.public = server-key.pub
 host.path.xmlrpc = /xmlrpc
 host.path.rewriter = rewrite-rules.def
+
+# Kerberos configuration
+kerberos.keytab = krb5.keytab
+kerberos.secure_path = /private
+kerberos.realm = EXAMPLE.COM
+kerberos.realm_basic = Example Realm
 
 # Project settings
 project.name = Test project

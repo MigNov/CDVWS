@@ -1,4 +1,3 @@
-#define DEBUG_SSL
 #include "cdvws.h"
 
 #ifdef DEBUG_SSL
@@ -132,18 +131,30 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 	int len;
 	char buf[TCP_BUF_SIZE] = { 0 };
 
+	DPRINTF("%s: Getting data from fd #%d...\n", __FUNCTION__, s);
+
 	while (1) {
 		memset(buf, 0, sizeof(buf));
 
-		if (socket_has_data(s, 50000) != 1)
+		if (socket_has_data(s, 50000) != 1) {
+			DPRINTF("%s: No more data on fd #%d\n", __FUNCTION__, s);
 			break;
+		}
 
 		len = recv(s, buf, sizeof(buf), 0);
+		if (len == 0) {
+			DPRINTF("%s: No data available on fd #%d\n", __FUNCTION__, s);
+			break;
+		}
+
+		DPRINTF("%s: Got %d bytes from fd #%d\n", __FUNCTION__, len, s);
 
 		if (buf[len] != '>')
 			buf[len] = 0;
-		if (len == 0)
-			continue;
+		if (len == 0) {
+			DPRINTF("%s: No data available on fd #%d\n", __FUNCTION__, s);
+			break;
+		}
 
 		if (_tcp_total + len < sizeof(_tcp_buf)) {
 			memcpy(_tcp_buf + _tcp_total, buf, len);
@@ -151,16 +162,20 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 		}
 	}
 
-	if ((_tcp_total == 0) || ((_tcp_total > 0) && (req(NULL, NULL, s, client_addr, _tcp_buf, _tcp_total) == 1))) {
+	if ((_tcp_total > 0) && (req(NULL, NULL, s, client_addr, _tcp_buf, _tcp_total) == 1)) {
+		DPRINTF("%s: Processed %d total bytes\n", __FUNCTION__, _tcp_total);
 		close(s);
 		return 1;
 	}
 
+	DPRINTF("%s: Done\n", __FUNCTION__);
 	return 0;
 }
 
 int process_request(SSL *ssl, int s, struct sockaddr_in client_addr, tProcessRequest req)
 {
+	int ret;
+
 	DPRINTF("%s: Establishing %s connection\n", __FUNCTION__, (ssl != NULL)
 		? "secure" : "insecure");
 
@@ -168,9 +183,12 @@ int process_request(SSL *ssl, int s, struct sockaddr_in client_addr, tProcessReq
 	_tcp_total = 0;
 
 	if (ssl == NULL)
-		return process_request_plain(s, client_addr, req);
+		ret = process_request_plain(s, client_addr, req);
 	else
-		return process_request_ssl(ssl, s, client_addr, req);
+		ret = process_request_ssl(ssl, s, client_addr, req);
+
+	DPRINTF("%s: Request return value is %d\n", __FUNCTION__, ret);
+	return ret;
 }
 
 int write_common(BIO *io, int sock, char *data, int len)

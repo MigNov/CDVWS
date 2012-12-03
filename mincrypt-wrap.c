@@ -1,4 +1,3 @@
-#define DEBUG_MINCRYPT
 #include "cdvws.h"
 
 #ifdef DEBUG_MINCRYPT

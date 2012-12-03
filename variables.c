@@ -1,5 +1,3 @@
-#define DEBUG_VARIABLES
-
 #include "cdvws.h"
 
 #ifdef DEBUG_VARIABLES
@@ -29,6 +27,20 @@ int variable_allow_overwrite(char *name, int allow)
 	return 0;
 }
 
+int variable_get_readonly(char *name)
+{
+	int idx;
+
+	if (name == NULL)
+		return -EINVAL;
+
+	idx = variable_get_idx(name, NULL);
+	if (idx < 0)
+		return -ENOENT;
+
+	return _vars[idx].readonly;
+}
+
 int variable_get_overwrite(char *name)
 {
 	if (name == NULL)
@@ -50,6 +62,9 @@ int variable_set_deleted(char *name, int is_deleted)
 {
 	if (name == NULL)
 		return -EINVAL;
+
+	if (variable_get_readonly(name) == 1)
+		return -EPERM;
 
 	if ((is_deleted != 0) && (is_deleted != 1))
 		return -EINVAL;
@@ -80,6 +95,9 @@ int variable_set_fixed_type(char *name, char *type)
 
 	if (name == NULL)
 		return 0;
+
+	if (variable_get_readonly(name) == 1)
+		return -EPERM;
 
 	idx = variable_get_idx(name, NULL);
 	if (idx < 0)
@@ -114,11 +132,13 @@ int variable_get_fixed_type(char *name)
 
 int variable_create(char *name, char *type)
 {
+	int typ;
+
 	if ((name == NULL) || (type == NULL))
 		return -1;
 
 	if (_vars == NULL) {
-		_vars = (tVariables *)malloc( sizeof(tVariables) );
+		_vars = (tVariables *)utils_alloc( "variables.variable_create", sizeof(tVariables) );
 		_vars_num = 0;
 	}
 	else {
@@ -153,7 +173,21 @@ int variable_create(char *name, char *type)
 	else
 		_vars[_vars_num].name = strdup(name);
 
-	_vars[_vars_num].type = type;
+	if (strcmp(type, "int") == 0)
+		typ = TYPE_INT;
+	else
+	if (strcmp(type, "int") == 0)
+		typ = TYPE_LONG;
+	else
+	if (strcmp(type, "double") == 0)
+		typ = TYPE_DOUBLE;
+	else
+	if (strcmp(type, "string") == 0)
+		typ = TYPE_STRING;
+	else
+		typ = get_type_from_string(type, 1);
+
+	_vars[_vars_num].type = typ;
 	_vars_num++;
 	return _vars_num - 1;
 }
@@ -161,6 +195,9 @@ int variable_create(char *name, char *type)
 int variable_set(char *name, char *value, int q_type, int idParent, int type)
 {
 	int idx, ftype;
+
+	if (variable_get_readonly(name) == 1)
+		return -EPERM;
 
 	if ((idx = variable_lookup_name_idx(name, NULL, idParent))== -1)
 		return -ENOENT;
@@ -177,8 +214,7 @@ int variable_set(char *name, char *value, int q_type, int idParent, int type)
         _vars[idx].idParent = idParent;
 	_vars[idx].deleted = 0;
 
-	free(_vars[idx].sValue);
-	_vars[idx].sValue = NULL;
+	_vars[idx].sValue = utils_free("variables.variable_set._vars[].sValue", _vars[idx].sValue);
 
 	_vars[idx].type = type;
 
@@ -198,13 +234,13 @@ int variable_set(char *name, char *value, int q_type, int idParent, int type)
 	return 0;
 }
 
-int variable_add(char *name, char *value, int q_type, int idParent, int type)
+int variable_add_fl(char *name, char *value, int q_type, int idParent, int type, int readonly)
 {
 	if (value == NULL)
 		return -1;
 
 	if (_vars == NULL) {
-		_vars = (tVariables *)malloc( sizeof(tVariables) );
+		_vars = (tVariables *)utils_alloc( "variables.variable_add", sizeof(tVariables) );
 		_vars_num = 0;
 	}
 	else {
@@ -234,6 +270,7 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 	_vars[_vars_num].deleted = 0;
 	_vars[_vars_num].fixed_type = 0;
 	_vars[_vars_num].allow_overwrite = -1;
+	_vars[_vars_num].readonly = readonly;
 	if (name == NULL)
 		_vars[_vars_num].name = NULL;
 	else
@@ -256,6 +293,11 @@ int variable_add(char *name, char *value, int q_type, int idParent, int type)
 	
 	_vars_num++;
 	return _vars_num - 1;
+}
+
+int variable_add(char *name, char *value, int q_type, int idParent, int type)
+{
+	return variable_add_fl(name, value, q_type, idParent, type, 0);
 }
 
 int variable_get_idx(char *el, char *type)
@@ -337,11 +379,13 @@ void variable_dump(void)
 		DPRINTF("\tVariable source: %s\n",
 			(_vars[i].q_type == TYPE_QPOST) ? "POST Request" :
 			((_vars[i].q_type == TYPE_QGET) ? "GET Request" :
-			((_vars[i].q_type == TYPE_MODULE) ? "MODULE Processing" : "SCRIPT Processing")));
+			((_vars[i].q_type == TYPE_MODULE) ? "MODULE Processing" :
+			((_vars[i].q_type == TYPE_MODAUTH) ? "AUTH MODULE Processing" : "SCRIPT Processing"))));
 		DPRINTF("\tName: %s\n", _vars[i].name ? _vars[i].name : "<null>");
 		DPRINTF("\tAllow overwrite: %d (local %d)\n", variable_get_overwrite(_vars[i].name),
 				 _vars[i].allow_overwrite);
-		DPRINTF("\tDeleted: %d\n", _vars[i].deleted);
+		DPRINTF("\tDeleted: %s\n", _vars[i].deleted ? "yes" : "no");
+		DPRINTF("\tRead-only: %s\n", _vars[i].readonly ? "yes" : "no");
 		DPRINTF("\tFixed to type: %s\n", (_vars[i].fixed_type > 0) ?
 			get_type_string(_vars[i].fixed_type) : "<none>");
 
@@ -380,6 +424,7 @@ int variable_lookup_name_idx(char *name, char *type, int idParent)
 				|| ((_vars[i].q_type == TYPE_QPOST) && (strcasecmp(type, "post") == 0)))
 				|| ((_vars[i].q_type == TYPE_QGET) && (strcasecmp(type, "get") == 0))
 				|| ((_vars[i].q_type == TYPE_MODULE) && (strcasecmp(type, "module") == 0))
+				|| ((_vars[i].q_type == TYPE_MODAUTH) && (strcasecmp(type, "auth") == 0))
 				))
 			return i;
 
@@ -391,12 +436,11 @@ void variable_free_all(void)
 	int i;
 
 	for (i = 0; i < _vars_num; i++) {
-		free(_vars[i].name);
-		free(_vars[i].sValue);
+		_vars[i].name = utils_free("variables.variable_free_all._vars[].name", _vars[i].name);
+		_vars[i].sValue = utils_free("variables.variable_free_all.vars[].sValue", _vars[i].sValue);
 	}
 
 	_vars_num = 0;
-	free(_vars);
-	_vars = NULL;
+	_vars = utils_free("variables.variable_free_all.vars", _vars);
 }
 

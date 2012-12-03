@@ -1,5 +1,3 @@
-#define DEBUG_CONFIG
-
 #include "cdvws.h"
 
 #ifdef DEBUG_CONFIG
@@ -26,17 +24,19 @@ void config_variable_free(int idx)
 	if ((idx < 0) || (idx > numConfigVars))
 		return;
 
-	free(configVars[idx].filename);
-	free(configVars[idx].space);
-	free(configVars[idx].key);
-	free(configVars[idx].value);
-	free(configVars[idx].fullkey);
+	configVars[idx].filename = utils_free("configVars[].filename", configVars[idx].filename);
+	configVars[idx].space = utils_free("configVars[].space", configVars[idx].space);
+	configVars[idx].key = utils_free("configVars[].key", configVars[idx].key);
+	configVars[idx].value = utils_free("configVars[].value", configVars[idx].value);
+	configVars[idx].fullkey = utils_free("configVars[].fullkey", configVars[idx].fullkey);
 
+/*
 	configVars[idx].filename = NULL;
 	configVars[idx].space = NULL;
 	configVars[idx].key = NULL;
 	configVars[idx].value = NULL;
 	configVars[idx].fullkey = NULL;
+*/
 }
 
 int config_variable_add(char *filename, char *space, char *key, char *value, char *fullkey)
@@ -48,7 +48,7 @@ int config_variable_add(char *filename, char *space, char *key, char *value, cha
 			fullkey, (space != NULL) ? space : "<all>", value);
 
 	if (configVars == NULL) {
-		configVars = (tConfigVariable *)malloc( sizeof(tConfigVariable) );
+		configVars = (tConfigVariable *)utils_alloc( "config.config_variable_add", sizeof(tConfigVariable) );
 		numConfigVars = 0;
 	}
 	else {
@@ -312,11 +312,11 @@ void config_free(void)
 	DPRINTF("%s: Freeing configuration data\n", __FUNCTION__);
 
 	for (i = 0; i < numConfigVars; i++) {
-		free(configVars[i].filename);
-		free(configVars[i].space);
-		free(configVars[i].key);
-		free(configVars[i].value);
-		free(configVars[i].fullkey);
+		//configVars[i].filename = utils_free("configVars[].filename",configVars[i].filename);
+		configVars[i].space = utils_free("configVars[].space", configVars[i].space);
+		configVars[i].key = utils_free("configVars[].key", configVars[i].key);
+		configVars[i].value = utils_free("configVars[].value", configVars[i].value);
+		configVars[i].fullkey = utils_free("configVars[].fullkey", configVars[i].fullkey);
 	}
 
 	numConfigVars = 0;

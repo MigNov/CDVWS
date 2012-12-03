@@ -1,5 +1,3 @@
-#define DEBUG_XMLRPC
-
 #include "cdvws.h"
 
 #ifdef DEBUG_XMLRPC
@@ -91,7 +89,7 @@ void xmlrpc_variable_free_all(void)
 		_xmlrpc_vars[i].idParent = 0;
 		_xmlrpc_vars[i].iValue = 0;
 		_xmlrpc_vars[i].shValue = 0;
-		free(_xmlrpc_vars[i].sValue);
+		_xmlrpc_vars[i].sValue = utils_free("xmlrpc.xmlrpc_variable_free_all", _xmlrpc_vars[i].sValue);
 		_xmlrpc_vars[i].sValue = NULL;
 		_xmlrpc_vars[i].dValue = 0;
 	}
@@ -167,7 +165,7 @@ void xmlrpc_format_params(char *tmp, int tmp_len, tXmlRPCVars *xmlrpc_vars, int 
 
 				if (xtmp != NULL) {
 					cdvPrintfAppend(tmp, tmp_len, "<base64>%s</base64>", xtmp);
-					free(xtmp);
+					xtmp = utils_free("xmlrpc.xmlrpc_format_params.xtmp", xtmp);
 				}
 				else {
 					/* Try to use `base64` from coreutils package if it failed above */
@@ -235,7 +233,7 @@ int xmlrpc_variable_add(char *type, char *data)
 	int id;
 
 	if (_xmlrpc_vars == NULL) {
-		_xmlrpc_vars = (tXmlRPCVars *)malloc( sizeof(tXmlRPCVars) );
+		_xmlrpc_vars = (tXmlRPCVars *)utils_alloc( "xmlrpc.xmlrpc_variable_add", sizeof(tXmlRPCVars) );
 		_xmlrpc_vars_num = 0;
 		_xmlrpc_vars[_xmlrpc_vars_num].id = 1;
 	}
@@ -328,9 +326,9 @@ int xmlrpc_variable_add(char *type, char *data)
 		unsigned char *tmp = wrap_mincrypt_base64_decode((unsigned char *)data, &len);
 
 		if (tmp != NULL) {
-			free(data);
+			data = utils_free("xmlrpc.xmlrpc_variable_add.data", data);
 			data = strdup((const char *)tmp);
-			free(tmp);
+			tmp = utils_free("xmlrpc.xmlrpc_variable_add.tmp", tmp);
 		}
 
 		_xmlrpc_vars[_xmlrpc_vars_num].type = XMLRPC_TYPE_BASE64;
@@ -377,9 +375,9 @@ void xmlrpc_process_param(xmlDocPtr doc, xmlNodePtr node, int ignore_check, int 
 				if (tmp != NULL) {
 					if (_xlastElement)
 						xmlrpc_variable_add("struct", data);
-					free(_xlastElement);
+					_xlastElement = utils_free("xmlrpc.xmlrpc_process_param._xlastElement", _xlastElement);
 					_xlastElement = strdup(tmp);
-					free(tmp);
+					tmp = utils_free("xmlrpc.xmlrpc_process_param.tmp", tmp);
 				}
 			}
 
@@ -390,13 +388,11 @@ void xmlrpc_process_param(xmlDocPtr doc, xmlNodePtr node, int ignore_check, int 
 				|| (_xlastElement != NULL)) {
 					if (_xlastElement == NULL)
 						_xIdParent = 0;
-					free(_xlastElement);
-					_xlastElement = NULL;
+					_xlastElement = utils_free("xmlrpc.xmlrpc_process_param._xlastElement", _xlastElement);
 				}
 		}
 
-		free(data);
-		data = NULL;
+		data = utils_free("xmlrpc.xmlrpc_process_param.data", data);
 
 		node = node->next;
 	}

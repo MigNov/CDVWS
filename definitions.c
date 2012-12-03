@@ -1,5 +1,3 @@
-#define DEBUG_DEFS
-
 #include "cdvws.h"
 
 #ifdef DEBUG_DEFS
