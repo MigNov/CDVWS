@@ -294,8 +294,10 @@ char *krb5_get_user(char *keytab, char *srv_princ, const char *auth_line) {
 
 	DPRINTF("%s: Getting credentials for principal %s\n", __FUNCTION__, srv_princ);
 	ret = get_gss_creds(srv_princ, &server_creds);
-	if (ret)
+	if (ret) {
+		DPRINTF("%s: Cannot get credentials for %s\n", __FUNCTION__, srv_princ);
 		goto end;
+	}
 
 	DPRINTF("Auth_line is %s\n", auth_line);
 
