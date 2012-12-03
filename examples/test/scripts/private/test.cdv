@@ -1,0 +1,3 @@
+<$
+	printf("Username is %s\n", USERNAME);
+$>

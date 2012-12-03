@@ -2,6 +2,8 @@
 	define testvar auto;
 	define testvar2 string;
 
+	printf("Username is %s\n", USERNAME);
+
 	x = get('perf');
 	if (x == 1) {
 		enable_perf(true);

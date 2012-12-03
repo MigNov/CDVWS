@@ -460,7 +460,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 				else {
 					DPRINTF("%s: User is %s. Setting USERNAME variable\n", __FUNCTION__, c);
 
-					variable_add_fl("USERNAME", c, TYPE_MODAUTH, 0, TYPE_STRING, 1);
+					variable_add_fl("USERNAME", c, TYPE_MODAUTH, -1, TYPE_STRING, 1);
 				}
 			}
 		}

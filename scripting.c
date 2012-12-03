@@ -164,8 +164,15 @@ int _script_builtin_function(char *var, char *fn, char *args)
 				vars = strdup( t.tokens[1] + 1 );
 
 				t2 = tokenize(vars, ",");
-				for (i = 0; i < t2.numTokens; i++)
-					instr = replace(instr, "%s", variable_get_element_as_string(trim(t2.tokens[i]), NULL));
+				for (i = 0; i < t2.numTokens; i++) {
+					DPRINTF("%s: Replacing variable %s\n", __FUNCTION__, trim(t2.tokens[i]));
+					char *tmp = variable_get_element_as_string(trim(t2.tokens[i]), NULL);
+
+					if (tmp != NULL)
+						instr = replace(instr, "%s", tmp);
+					else
+						desc_printf(gIO, gFd, "Variable \"%s\" not found\n", trim(t2.tokens[i]));
+				}
 
 				while (strstr(instr, "\\n") != NULL)
 					instr = replace(instr, "\\n", "\n");

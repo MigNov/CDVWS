@@ -1,5 +1,7 @@
 #include "cdvws.h"
 
+//#define DEBUG_LOOKUP
+
 #ifdef DEBUG_VARIABLES
 #define DPRINTF(fmt, args...) \
 do { fprintf(stderr, "[cdv/variables   ] " fmt , args); } while (0)
@@ -340,8 +342,10 @@ char *variable_get_element_as_string(char *el, char *type)
 	char val[1024] = { 0 };
 
 	t = tokenize(el, ".");
-	for (i = 0; i < t.numTokens; i++)
+	for (i = 0; i < t.numTokens; i++) {
 		id = variable_lookup_name_idx(t.tokens[i], type, id);
+		DPRINTF("%s: Id for %s (token %s) is %d\n", __FUNCTION__, el, t.tokens[i], id);
+	}
 
 	/* If there's no such variable then return NULL */
 	if (id == -1)
@@ -416,17 +420,32 @@ int variable_lookup_name_idx(char *name, char *type, int idParent)
 	int i;
 
 	for (i = 0; i < _vars_num; i++)
-		if ((_vars[i].name != NULL)
-			&& (strcmp(_vars[i].name, name) == 0)
-			&& (_vars[i].idParent == idParent)
-			&& ((
-				((type == NULL) || (strcasecmp(type, "any") == 0))
-				|| ((_vars[i].q_type == TYPE_QPOST) && (strcasecmp(type, "post") == 0)))
-				|| ((_vars[i].q_type == TYPE_QGET) && (strcasecmp(type, "get") == 0))
-				|| ((_vars[i].q_type == TYPE_MODULE) && (strcasecmp(type, "module") == 0))
-				|| ((_vars[i].q_type == TYPE_MODAUTH) && (strcasecmp(type, "auth") == 0))
-				))
-			return i;
+		if (_vars[i].name != NULL) {
+			if (strcmp(_vars[i].name, name) == 0) {
+				if (_vars[i].idParent == idParent) {
+					if ((
+					((type == NULL) || (strcasecmp(type, "any") == 0))
+					|| ((_vars[i].q_type == TYPE_QPOST) && (strcasecmp(type, "post") == 0)))
+					|| ((_vars[i].q_type == TYPE_QGET) && (strcasecmp(type, "get") == 0))
+					|| ((_vars[i].q_type == TYPE_MODULE) && (strcasecmp(type, "module") == 0))
+					|| ((_vars[i].q_type == TYPE_MODAUTH) && (strcasecmp(type, "auth") == 0))
+					)
+						return i;
+				}
+				#ifdef DEBUG_LOOKUP
+				else
+					DPRINTF("%s: idParent mismatch (%d != %d)\n", __FUNCTION__, _vars[i].idParent, idParent);
+				#endif
+			}
+			#ifdef DEBUG_LOOKUP
+			else
+				DPRINTF("%s: Name mismatch ('%s' != '%s')\n", __FUNCTION__, _vars[i].name, name);
+			#endif
+		}
+		#ifdef DEBUG_LOOKUP
+		else
+			DPRINTF("%s: Name is NULL\n", __FUNCTION__);
+		#endif
 
 	return -1;
 }
