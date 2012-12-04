@@ -46,6 +46,7 @@ int first_initialize(int enabled)
 	_var_overwrite = 0;
 	_perf_measure = 0;
 	_script_in_condition_and_met = -1;
+	_handlers_path = NULL;
 	gIO = NULL;
 	gFd = -1;
 	gHttpHandler = 0;
@@ -1137,6 +1138,7 @@ char *process_read_handler(char *filename)
 {
         FILE *fp = NULL;
         char data[4096] = { 0 };
+	char loc[4096] = { 0 };
 
         if ((filename == NULL) || (strlen(filename) == 0))
                 return NULL;
@@ -1144,28 +1146,37 @@ char *process_read_handler(char *filename)
 	DPRINTF("%s: Processing read handler for '%s'\n", __FUNCTION__, filename);
 
         if (filename[0] != '/') {
-                char buf[4096] = { 0 };
+		if (_handlers_path != NULL)
+			snprintf(loc, sizeof(loc), "%s/%s", _handlers_path, filename);
+		else {
+			char buf[4096] = { 0 };
 
-                getcwd(buf, sizeof(buf));
-                if ((strlen(buf) + strlen(filename) + 1) < sizeof(buf)) {
-                        strcat(buf, "/");
-                        strcat(buf, filename);
-                }
+	                getcwd(buf, sizeof(buf));
+        	        if ((strlen(buf) + strlen(filename) + 1) < sizeof(buf)) {
+                	        strcat(buf, "/");
+                        	strcat(buf, filename);
+	                }
 
-                filename = strdup(buf);
+			strcpy(loc, buf);
+		}
         }
+	else
+		strcpy(loc, filename);
 
-        if (access(filename, R_OK) != 0)
+        if (access(loc, R_OK) != 0) {
+		DPRINTF("%s: File %s does not exist\n", __FUNCTION__, loc);
                 return NULL;
+	}
 
-        fp = fopen(filename, "r");
+        fp = fopen(loc, "r");
         if (fp == NULL)
                 return NULL;
 
         fgets(data, sizeof(data), fp);
         fclose(fp);
 
-        filename = utils_free("utils.process_read_handler.filename", filename);
+	if ((strlen(data) > 0) && (data[strlen(data) - 1] == '\n'))
+		data[strlen(data) - 1] = 0;
 
         return strdup(data);
 }
@@ -1174,13 +1185,22 @@ char *process_exec_handler(char *binary)
 {
         FILE *fp = NULL;
         char s[4096] = { 0 };
+	char bin[4096] = { 0 };
 
-        if (access(binary, X_OK) != 0)
+	if (binary == NULL)
+		return NULL;
+
+	if (_handlers_path != NULL)
+		snprintf(bin, sizeof(bin), "%s/%s", _handlers_path, binary);
+	else
+		strcpy(bin, binary);
+
+        if (access(bin, X_OK) != 0)
                 return NULL;
 
-	DPRINTF("%s: Processing exec handler for '%s'\n", __FUNCTION__, binary);
+	DPRINTF("%s: Processing exec handler for '%s'\n", __FUNCTION__, bin);
 
-        fp = popen(binary, "r");
+        fp = popen(bin, "r");
         if (fp == NULL)
                 return NULL;
 
@@ -1208,6 +1228,34 @@ char *process_handlers(char *path)
 
 	DPRINTF("%s: No handler found for '%s'\n", __FUNCTION__, path);
         return NULL;
+}
+
+void handlers_set_path(char *path)
+{
+	_handlers_path = strdup(path);
+
+	DPRINTF("%s: Handlers path set to %s\n", __FUNCTION__, _handlers_path);
+}
+
+char *process_decoding(char *in, char *type)
+{
+	size_t len = -1;
+
+	if (strcmp(type, "base64") == 0) {
+		char *ret = NULL;
+
+		DPRINTF("%s: Decoding string from base64\n", __FUNCTION__);
+
+		len = strlen(in);
+		ret = base64_decode(in, &len);
+
+		if ((ret != NULL) && (strlen(ret) > 0) && (ret[strlen(ret) - 1] == '\n'))
+			ret[strlen(ret) - 1] = 0;
+
+		return ret;
+	}
+
+	return NULL;
 }
 
 /* PID functions */

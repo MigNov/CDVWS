@@ -7,6 +7,8 @@ MINCRYPT=-lmincrypt -DUSE_MINCRYPT
 READLINE=-lhistory -lreadline -DUSE_READLINE
 REGEX=-lpcre -DUSE_PCRE
 KRB5GSSAPI=-lgssapi_krb5 -lkrb5 -lk5crypto -lcom_err -DUSE_KERBEROS
+#MYSQL=-O2 `mysql_config --libs` `mysql_config --cflags` -DUSE_MYSQL
+MYSQL=-L/usr/lib64/mysql -lmysqlclient -DUSE_MYSQL
 #KRB5DEBUG=-DAUTH_MSG_SLEEP
 DEBUG=-g $(KRB5DEBUG)
 OBJECTS=cdv-main.c utils.c config.c definitions.c modules.c xml.c database.c database-internal.c sockets.c mincrypt-wrap.c handler-http.c cdvshell.c xmlrpc.c variables.c scripting.c regex.c handler-auth.c base64.c
@@ -14,7 +16,7 @@ OBJECTS=cdv-main.c utils.c config.c definitions.c modules.c xml.c database.c dat
 all:
 	@rm -rf ./bindir
 	@mkdir -p ./bindir/modules
-	$(CC) -Wall $(DEBUG) -o ./bindir/cdvws $(OBJECTS) -ldl -rdynamic -lrt $(SSL) $(LIBXML_CFLAGS) $(LIBXML_LIBS) $(MINCRYPT) $(READLINE) $(REGEX) $(KRB5GSSAPI)
+	$(CC) -Wall $(DEBUG) -o ./bindir/cdvws $(OBJECTS) -ldl -rdynamic -lrt $(SSL) $(LIBXML_CFLAGS) $(LIBXML_LIBS) $(MINCRYPT) $(READLINE) $(REGEX) $(KRB5GSSAPI) $(MYSQL)
 	@cp -af examples bindir
 	@cd modules && make && cd -
 

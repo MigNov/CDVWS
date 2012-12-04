@@ -443,25 +443,15 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 				http_host_header(io, connected, HTTP_CODE_UNAUTHORIZED, host, "text/html", NULL,
 					project_info_get("kerberos_realm_fallback"), strlen(err));
 				write_common(io, connected, err, strlen(err));
-				DPRINTF("Message sent\n");
 				method = utils_free("http.method", method);
 				path = utils_free("http.path", path);
 				cleanup();
 				return 1;
 			}
 			else {
-				if (strcmp(c, "REQAUTH") == 0) {
-					char *err = "<h1>Unauthorized!</h1>";
+				DPRINTF("%s: User is %s. Setting USERNAME variable\n", __FUNCTION__, c);
 
-					http_host_header(io, connected, HTTP_CODE_UNAUTHORIZED, host, "text/html", NULL,
-						project_info_get("kerberos_realm_fallback"), strlen(err));
-					write_common(io, connected, err, strlen(err));
-				}
-				else {
-					DPRINTF("%s: User is %s. Setting USERNAME variable\n", __FUNCTION__, c);
-
-					variable_add_fl("USERNAME", c, TYPE_MODAUTH, -1, TYPE_STRING, 1);
-				}
+				variable_add_fl("USERNAME", c, TYPE_MODAUTH, -1, TYPE_STRING, 1);
 			}
 		}
 	}

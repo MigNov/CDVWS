@@ -1,3 +1,37 @@
+# Type of authentication may be:
+# - "file" for file-backed authentication table (for testing purposes only, should never be used in real world applications)
+# - "idb" for internal database-backed auth table
+# - "mysql" for MySQL database-backed auth table
+#
+# The plan is to implement also:
+# - "pgsql" for PgSQL database-backed auth table
+# - "fbsql" for Firebird database-backed auth table
+# and maybe others too ;-)
+
+auth.type = mysql
+
+# For file-backed auth table:
+# auth.table.file = private/users.tab
+#
+# For internal database-backed auth table:
+# auth.table.file = private.idb
+# auth.table.name = users
+#
+# For MySQL database-backed auth table:
+# auth.connection.server = server
+# auth.connection.username = user
+# auth.connection.password = password
+# auth.connection.password.encoding = encodingType
+# auth.connection.database = db
+# auth.table.name = users
+#
+auth.connection.server = localhost
+auth.connection.username = root
+auth.connection.password = read://.password
+auth.connection.password.encoding = base64
+auth.connection.database = cdvtest1
+auth.table.name = users
+
 sql.type = mysql
 sql.host = localhost
 sql.user = root

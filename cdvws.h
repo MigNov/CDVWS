@@ -96,6 +96,17 @@
 #include <readline/history.h>
 #endif
 
+#ifdef USE_KERBEROS
+#include <gssapi.h>
+#include <krb5.h>
+#include <gssapi/gssapi_generic.h>
+#include <gssapi/gssapi_krb5.h>
+#endif
+
+#ifdef USE_MYSQL
+#include <mysql/mysql.h>
+#endif
+
 #ifdef USE_MINCRYPT
 /* We cannot include mincrypt.h because of re-introducing definitions */
 void mincrypt_set_password(char *salt, char *password, int vector_multiplier);
@@ -385,6 +396,7 @@ int _vars_num;
 int _var_overwrite;
 short _perf_measure;
 short _script_in_condition_and_met;
+char *_handlers_path;
 char *gHost;
 char *myRealm;
 
@@ -493,6 +505,8 @@ int is_string(char *val);
 int is_comment(char *val);
 int get_type_from_string(char *type, int allow_autodetection);
 char *get_type_string(int id);
+char *process_decoding(char *in, char *type);
+void handlers_set_path(char *path);
 void *utils_alloc(char *var, int len);
 void *utils_free(char *vt, void *var);
 
