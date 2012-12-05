@@ -2570,7 +2570,7 @@ long _idb_read_data_v1(int fd)
 	}
 	idb_tabdata_num += fieldcnt;
 
-	/* Increment 2 bytes for version number */
+	/* Increment by 2 bytes for version number */
 	return data_len + 2;
 }
 
