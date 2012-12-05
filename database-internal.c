@@ -2,6 +2,9 @@
 
 #ifdef USE_INTERNAL_DB
 
+/* iDB version number */
+#define IDB_VERSION	1
+
 #ifdef DEBUG_IDB
 #define DPRINTF(fmt, ...) \
 do { fprintf(stderr, "[cdv/database-idb] " fmt , ## __VA_ARGS__); } while (0)
@@ -136,6 +139,7 @@ int idb_query(char *query)
 		t = tokenize(query, " ");
 
 		if (strcmp(t.tokens[0], "INIT") == 0) {
+			_idb_db_version = IDB_VERSION;
 			if (_idb_datadir == NULL)
 				ret = idb_load(t.tokens[1]);
 			else {
@@ -153,6 +157,7 @@ int idb_query(char *query)
 		t = tokenize(query, " ");
 
 		if (strcmp(t.tokens[0], "REINIT") == 0) {
+			_idb_db_version = IDB_VERSION;
 			if (_idb_datadir == NULL) {
 				unlink(t.tokens[1]);
 				ret = idb_load(t.tokens[1]);
@@ -181,6 +186,9 @@ int idb_query(char *query)
 
 			ret = 0;
 		}
+		else
+		if (strcmp(t.tokens[1], "VERSION") == 0)
+			ret = idb_set_compat_mode(atoi(t.tokens[2]));
 		else
 		if ((strcmp(t.tokens[1], "QUERYLOG") == 0)
 			|| (strcmp(t.tokens[1], "FRESHQUERYLOG") == 0)) {
@@ -2032,7 +2040,7 @@ void idb_results_free(tTableDataSelect *tds)
 	tds->rows = utils_free("idb.idb_results_free.rows", tds->rows);
 }
 
-long _idb_save_header(int fd)
+long _idb_save_header_v1(int fd)
 {
 	long i, j, data_len = 0;
 	char tmp[4] = { 0 };
@@ -2042,6 +2050,12 @@ long _idb_save_header(int fd)
 
 	/* CDVDB is the IDB header */
 	if ((ret = data_write(fd, "CDVDB", 5, &data_len)) < 0)
+		return ret;
+
+	DPRINTF("%s: Saving database file version %d\n", __FUNCTION__, IDB_VERSION);
+	/* Write IDB version information */
+	WORDSTR(tmp, IDB_VERSION);
+	if ((ret = data_write(fd, tmp, 2, &data_len)) < 0)
 		return ret;
 
 	/* Write the header size placeholder */
@@ -2122,9 +2136,9 @@ long _idb_save_header(int fd)
 		}
 	}
 
-	lseek(fd, 5, SEEK_SET);
+	lseek(fd, 5 + 2, SEEK_SET);
 
-	UINT32STR(tmp, (data_len - 5 - 3) );
+	UINT32STR(tmp, (data_len - 3 - 2 - 5) );
 	write(fd, tmp, 3);
 
 	lseek(fd, data_len, SEEK_SET);
@@ -2133,7 +2147,7 @@ long _idb_save_header(int fd)
 	return data_len;
 }
 
-long _idb_save_data(int fd, long orig_data_len)
+long _idb_save_data_v1(int fd, long orig_data_len)
 {
 	long i, ret, data_len = 0;
 	int fieldType;
@@ -2229,7 +2243,23 @@ long _idb_save_data(int fd, long orig_data_len)
 	return data_len;
 }
 
-long _idb_read_header(int fd, char *filename)
+long _idb_save_header(int fd)
+{
+	if (_idb_db_version == 1)
+		return _idb_save_header_v1(fd);
+
+	return -ENOTSUP;
+}
+
+long _idb_save_data(int fd, long orig_data_len)
+{
+	if (_idb_db_version == 1)
+		return _idb_save_data_v1(fd, orig_data_len);
+
+	return -ENOTSUP;
+}
+
+long _idb_read_header_v1(int fd, char *filename)
 {
 	long i, j, idTab, idField;
 	int inumf = 0, nf = 0;
@@ -2243,6 +2273,7 @@ long _idb_read_header(int fd, char *filename)
 	tmp = data_fetch(fd, 3, &data_len, 1);
 	if (tmp == NULL)
 		return -EIO;
+
 	size = (long)GETUINT32(tmp);
 	DPRINTF("%s: Header size is %ld bytes\n", __FUNCTION__, size);
 	tmp = utils_free("idb._idb_read_header.tmp", tmp); tmp = NULL;
@@ -2378,7 +2409,29 @@ long _idb_read_header(int fd, char *filename)
 	return data_len;
 }
 
-long _idb_read_data(int fd)
+long _idb_read_header(int fd, char *filename)
+{
+	int ver = 0;
+	long data_len = 0;
+	unsigned char *tmp = NULL;
+
+	/* Get version information */
+	tmp = data_fetch(fd, 2, &data_len, 1);
+	if (tmp == NULL)
+		return -EIO;
+
+	ver = GETWORD(tmp);
+	DPRINTF("%s: Database file version is %d\n", __FUNCTION__, ver);
+
+	_idb_db_version = ver;
+
+	if (ver == 1)
+		return _idb_read_header_v1(fd, filename);
+
+	return -ENOTSUP;
+}
+
+long _idb_read_data_v1(int fd)
 {
 	long i, fieldcnt, type, iValue;
 	long data_len = 0, size = 0;
@@ -2386,18 +2439,22 @@ long _idb_read_data(int fd)
 	long lValue = 0;
 	unsigned char *tmp = NULL;
 
-	/* Get header size */
+	/* Get data size */
 	tmp = data_fetch(fd, 3, &data_len, 1);
-	if (tmp == NULL)
+	if (tmp == NULL) {
+		DPRINTF("%s: Cannot get data size\n", __FUNCTION__);
 		return -EIO;
+	}
 	size = (long)GETUINT32(tmp);
 	DPRINTF("%s: Data size is %ld bytes\n", __FUNCTION__, size);
 	tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
 
 	/* Get data field count */
 	tmp = data_fetch(fd, 3, &data_len, 1);
-	if (tmp == NULL)
+	if (tmp == NULL) {
+		DPRINTF("%s: Cannot get field count\n", __FUNCTION__);
 		return -EIO;
+	}
 	fieldcnt = (long)GETUINT32(tmp);
 	DPRINTF("%s: Number of fields is %ld\n", __FUNCTION__, fieldcnt);
 	tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
@@ -2416,8 +2473,10 @@ long _idb_read_data(int fd)
 	for (i = 0; i < fieldcnt; i++) {
 		/* Get the field type */
 		tmp = data_fetch(fd, 1, &data_len, 0);
-		if (tmp == NULL)
+		if (tmp == NULL) {
+			DPRINTF("%s: Cannot read field type\n", __FUNCTION__);
 			return -EIO;
+		}
 		type = (int)GETBYTE(tmp);
 		DPRINTF("%s: Type is %ld (%s)\n", __FUNCTION__, type,
 			_idb_get_type(type) );
@@ -2425,24 +2484,30 @@ long _idb_read_data(int fd)
 
 		/* Get internal ID */
 		tmp = data_fetch(fd, 4, &data_len, 0);
-		if (tmp == NULL)
+		if (tmp == NULL) {
+			DPRINTF("%s: Cannot read internal table ID\n", __FUNCTION__);
 			return -EIO;
+		}
 		idb_tabdata[idb_tabdata_num + i].id = (int)GETUINT32(tmp);
 		DPRINTF("%s: Table ID is %ld\n", __FUNCTION__, idb_tabdata[idb_tabdata_num + i].id);
 		tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
 
 		/* Get the field ID */
 		tmp = data_fetch(fd, 4, &data_len, 0);
-		if (tmp == NULL)
+		if (tmp == NULL) {
+			DPRINTF("%s: Cannot read field ID\n", __FUNCTION__);
 			return -EIO;
+		}
 		idb_tabdata[idb_tabdata_num + i].idField = (int)GETUINT32(tmp);
 		DPRINTF("%s: Field ID is %ld\n", __FUNCTION__, idb_tabdata[idb_tabdata_num + i].idField);
 		tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
 
 		/* Get the row ID */
 		tmp = data_fetch(fd, 4, &data_len, 0);
-		if (tmp == NULL)
+		if (tmp == NULL) {
+			DPRINTF("%s: Cannot read row ID\n", __FUNCTION__);
 			return -EIO;
+		}
 		idb_tabdata[idb_tabdata_num + i].idRow = (int)GETUINT32(tmp);
 		DPRINTF("%s: Row ID is %ld\n", __FUNCTION__, idb_tabdata[idb_tabdata_num + i].idRow);
 		tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
@@ -2450,8 +2515,10 @@ long _idb_read_data(int fd)
 		/* Get the data themselves */
 		if (type == IDB_TYPE_INT) {
 			tmp = data_fetch(fd, 2, &data_len, 0);
-			if (tmp == NULL)
+			if (tmp == NULL) {
+				DPRINTF("%s: Cannot read integer data\n", __FUNCTION__);
 				return -EIO;
+			}
 			iValue = (int)GETWORD(tmp);
 			idb_tabdata[idb_tabdata_num + i].iValue = iValue;
 			DPRINTF("%s: Got iValue of %ld\n", __FUNCTION__, iValue);
@@ -2460,8 +2527,10 @@ long _idb_read_data(int fd)
 		else
 		if (type == IDB_TYPE_LONG) {
 			tmp = data_fetch(fd, 4, &data_len, 0);
-			if (tmp == NULL)
+			if (tmp == NULL) {
+				DPRINTF("%s: Cannot read long data\n", __FUNCTION__);
 				return -EIO;
+			}
 			lValue = (long)GETUINT32(tmp);
 			idb_tabdata[idb_tabdata_num + i].lValue = lValue;
 			DPRINTF("%s: Got lValue of %ld\n", __FUNCTION__, lValue);
@@ -2473,21 +2542,27 @@ long _idb_read_data(int fd)
 			int bytes;
 
 			tmp = data_fetch(fd, 1, &data_len, 0);
-			if (tmp == NULL)
+			if (tmp == NULL) {
+				DPRINTF("%s: Cannot read string or filename length\n", __FUNCTION__);
 				return -EIO;
+			}
 			bytes = (int)GETWORD(tmp);
 			tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
 
 			tmp = data_fetch(fd, bytes, &data_len, 0);
-			if (tmp == NULL)
+			if (tmp == NULL) {
+				DPRINTF("%s: Cannot read size\n", __FUNCTION__);
 				return -EIO;
+			}
 			size = (long)GETUINT32(tmp);
 			DPRINTF("%s: Got size of %ld\n", __FUNCTION__, size);
 			tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
 
 			tmp = data_fetch(fd, size, &data_len, 0);
-			if (tmp == NULL)
+			if (tmp == NULL) {
+				DPRINTF("%s: Cannot read data\n", __FUNCTION__);
 				return -EIO;
+			}
 			DPRINTF("%s: Got string data of '%s'\n", __FUNCTION__, tmp);
 			idb_tabdata[idb_tabdata_num + i].sValue = strdup((char *)tmp);
 			tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
@@ -2495,7 +2570,16 @@ long _idb_read_data(int fd)
 	}
 	idb_tabdata_num += fieldcnt;
 
-	return data_len;
+	/* Increment 2 bytes for version number */
+	return data_len + 2;
+}
+
+long _idb_read_data(int fd)
+{
+	if (_idb_db_version == 1)
+		return _idb_read_data_v1(fd);
+
+	return -ENOTSUP;
 }
 
 int idb_load(char *filename)
@@ -2547,6 +2631,17 @@ cleanup:
 	return ret;
 }
 
+int idb_set_compat_mode(int version)
+{
+	if (version < 1)
+		return -EINVAL;
+
+	_idb_db_version = version;
+
+	DPRINTF("%s: Setting iDB compat mode for version %d\n", __FUNCTION__, version);
+	return 0;
+}
+
 int idb_save(char *filename)
 {
 	int fd;
@@ -2558,7 +2653,8 @@ int idb_save(char *filename)
 	if (filename == NULL)
 		return -EINVAL;
 
-	DPRINTF("%s: Saving file '%s'\n", __FUNCTION__, filename);
+	DPRINTF("%s: Saving file '%s' in version %d\n", __FUNCTION__,
+		filename, _idb_db_version);
 
 	fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (fd < 0)
@@ -2598,6 +2694,7 @@ int idb_load(char *filename) {};
 int idb_save(char *filename) {};
 char *idb_get_filename(void) {};
 int idb_query(char *query) {};
+int idb_set_compat_mode(int version) { return -ENOTSUP; };
 tTableDataSelect idb_get_last_select_data(void) {};
 void idb_free_last_select_data(void) {};
 #endif

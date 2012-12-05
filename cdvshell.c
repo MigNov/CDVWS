@@ -69,7 +69,8 @@ char *readline_read(char *prompt)
 {
 	char *tmp = readline(prompt);
 
-	if ((strlen(tmp) > 0) && (strcmp(tmp, "quit") != 0))
+	if ((strlen(tmp) > 0) && (strcmp(tmp, "quit") != 0)
+		&& (strcmp(tmp, "\\q") != 0))
 		add_history(tmp);
 
 	return tmp;
@@ -490,9 +491,10 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 	else
 	if (strcmp(str, "version") == 0) {
 		desc_printf(io, cfd, "CDV WebServer version: %s\n", VERSION);
-		desc_printf(io, cfd, "MinCrypt support: %s\n", USE_MINCRYPT ? "yes" : "no");
 		desc_printf(io, cfd, "PCRE support: %s\n", USE_PCRE ? "yes" : "no" );
+		desc_printf(io, cfd, "MinCrypt support: %s\n", USE_MINCRYPT ? "yes" : "no");
 		desc_printf(io, cfd, "GNU Readline support: %s\n", USE_READLINE ? "yes" : "no");
+		desc_printf(io, cfd, "MySQL database support: %s\n", USE_MYSQL ? "yes" : "no");
 		desc_printf(io, cfd, "Kerberos 5 support over GSS-API: %s\n\n", USE_KERBEROS ? "yes" : "no");
 		desc_printf(io, cfd, "No modules found\n");
 	}

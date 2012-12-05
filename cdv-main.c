@@ -213,11 +213,13 @@ void test_alloc(void)
 
 void show_info_banner(void)
 {
-	printf("CDV WebServer v%s (%s minCrypt support, %s PCRE support, %s GNU Readline support, %s Kerberos 5 support over GSS-API)\n\n", VERSION,
+	printf("CDV WebServer v%s (%s minCrypt support, %s PCRE support, %s GNU Readline support, %s Kerberos 5 support over GSS-API, "
+		"%s MySQL database support)\n\n", VERSION,
 		USE_MINCRYPT ? "with" : "without",
 		USE_PCRE ? "with" : "without",
 		USE_READLINE ? "with" : "without",
-		USE_KERBEROS ? "with" : "without");
+		USE_KERBEROS ? "with" : "without",
+		USE_MYSQL ? "with" : "without");
 }
 
 int main(int argc, char *argv[])

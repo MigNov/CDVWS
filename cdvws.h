@@ -334,6 +334,7 @@ tTableDef *idb_tables;
 tTableFieldDef *idb_fields;
 tTableData *idb_tabdata;
 
+int _idb_db_version;
 int _idb_num_queries;
 int _idb_num_queries_create;
 int _idb_num_queries_drop;
@@ -448,6 +449,7 @@ int idb_load(char *filename);
 int idb_table_drop(char *table_name);
 void idb_free_last_select_data(void);
 tTableDataSelect idb_tables_show(void);
+int idb_set_compat_mode(int version);
 
 /* Config stuff */
 int config_initialize(void);
