@@ -1356,8 +1356,8 @@ void utils_pid_add(pid_t pid, char *reason)
 
 	shared_mem->_num_pids = num + 1;
 
-	DPRINTF("%s: PID #%d added to the shared memory [#%d]\n", __FUNCTION__,
-		pid, shared_mem->_num_pids);
+	DPRINTF("%s: PID #%d added to the shared memory [#%d, reason is '%s']\n", __FUNCTION__,
+		pid, shared_mem->_num_pids, reason);
 
 /*
 	if (_pids == NULL) {

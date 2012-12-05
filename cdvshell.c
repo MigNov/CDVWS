@@ -627,8 +627,12 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 
 					close(fd[1]);
 					read(fd[0], buf, sizeof(buf));
-					if (strstr(buf, "ERR") == NULL)
-						utils_pid_add( atoi(buf), "TCP Server" );
+					if (strstr(buf, "ERR") == NULL) {
+						char tmp[1024] = { 0 };
+
+						snprintf(tmp, sizeof(tmp), "TCP Server on port %s", t.tokens[3]);
+						utils_pid_add( atoi(buf), tmp );
+					}
 					else
 						waitpid( atoi(buf), NULL, 0 );
 				}
@@ -674,8 +678,12 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 
 						close(fd[1]);
 						read(fd[0], buf, sizeof(buf));
-						if (strstr(buf, "ERR") == NULL)
-							utils_pid_add( atoi(buf), "SSL Server" );
+						if (strstr(buf, "ERR") == NULL) {
+							char tmp[1024] = { 0 };
+
+							snprintf(tmp, sizeof(tmp), "SSL Server on port %s", t.tokens[3]);
+							utils_pid_add( atoi(buf), tmp );
+						}
 						else
 							waitpid( atoi(buf), NULL, 0 );
 					}
