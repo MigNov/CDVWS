@@ -509,6 +509,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"clear history\t\t\t\t\t\t- clear history and history files\n"
 			"emulate <method> <data>\t\t\t\t\t- emulate GET or POST method data entry\n"
 			"eval <line>\t\t\t\t\t\t- evaluate the script line\n"
+			"kill <pid>\t\t\t\t\t\t- terminate process <pid>, <pid> have to be child of web server\n"
 			"\n"
 			"Testing functions:\n\n"
 			"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
@@ -564,6 +565,24 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 				http_parse_data(t.tokens[2], type);
 				desc_printf(io, cfd, "Emulation done\n");
 			}
+		}
+
+		free_tokens(t);
+	}
+	else
+	if (strncmp(str, "kill", 4) == 0) {
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens == 2) {
+			pid_t pid = (pid_t)atoi(t.tokens[1]);
+
+			if (utils_pid_exists(pid) && (pid != parent_pid)) {
+				kill(pid, SIGUSR1);
+				desc_printf(io, cfd, "Process #%d terminated\n", pid);
+			}
+			else
+				desc_printf(io, cfd, "Process %d doesn't exist or is not owner by web server or "
+					"it is a control process\n", pid);
 		}
 
 		free_tokens(t);

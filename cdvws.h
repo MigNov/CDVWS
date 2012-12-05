@@ -536,6 +536,7 @@ int shared_mem_init_first(void);
 void shared_mem_free(void);
 int utils_pid_get_host_clients(char *host);
 int utils_pid_get_num_with_reason(char *reason);
+int utils_pid_exists(pid_t pid);
 
 /* Project related options */
 void project_info_init(void);

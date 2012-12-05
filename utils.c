@@ -1396,6 +1396,17 @@ void utils_pid_delete(pid_t pid)
 	shared_mem->_num_pids = num;
 }
 
+int utils_pid_exists(pid_t pid)
+{
+	int i;
+
+	for (i = 0; i < shared_mem->_num_pids; i++)
+		if (shared_mem->_pids[i].pid == pid)
+			return 1;
+
+	return 0;
+}
+
 int utils_pid_get_num_with_reason(char *reason)
 {
 	int i, num = 0;
