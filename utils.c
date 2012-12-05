@@ -38,8 +38,9 @@ int first_initialize(int enabled)
 	_shell_project_loaded = 0;
 	_shell_history_file = NULL;
 	_shell_enabled = enabled;
-	_pids = NULL;
-	_pids_num = 0;
+	//_pids = NULL;
+	//_pids_num = 0;
+	shared_mem = NULL;
 	_cdv_cookie = NULL;
 	_vars = NULL;
 	_vars_num = 0;
@@ -1258,45 +1259,227 @@ char *process_decoding(char *in, char *type)
 	return NULL;
 }
 
-/* PID functions */
-void utils_pid_add(int pid)
+/* Shared memory functions */
+tShared *shared_mem_setup(void)
 {
+	shmid = -1;
+	shared_memory = (void *)0;
+	int key = parent_pid;
+
+	shmid = shmget((key_t)key, sizeof(tShared), 0666 | IPC_CREAT);
+	if (shmid == -1) {
+		DPRINTF("%s: Cannot allocate shared memory, errno %d (%s)\n", __FUNCTION__,
+			errno, strerror(errno));
+		return NULL;
+	}
+
+	shared_memory = shmat(shmid, (void *)0, 0);
+	if (shared_memory == (void *)-1) {
+		DPRINTF("%s: Cannot attach shared memory, errno %d (%s)\n", __FUNCTION__,
+			errno, strerror(errno));
+		return NULL;
+	}
+
+	return (tShared *) shared_memory;
+}
+
+void shared_mem_free(void)
+{
+	if (shmdt(shared_memory) == -1)
+		DPRINTF("%s: shmdt failed\n", __FUNCTION__);
+
+	if (shmctl(shmid, IPC_RMID, 0) == -1)
+		DPRINTF("%s: shmctl(IPC_RMID) failed\n", __FUNCTION__);
+
+	shared_memory = NULL;
+	DPRINTF("%s: Done\n", __FUNCTION__);
+}
+
+int shared_mem_init(void)
+{
+	shared_mem = shared_mem_setup();
+	if (shared_mem == NULL) {
+		DPRINTF("%s: Cannot setup shared memory\n", __FUNCTION__);
+		return -1;
+	}
+
+        return 0;
+}
+
+int shared_mem_init_first(void)
+{
+	int ret = shared_mem_init();
+
+	if (ret == 0) {
+		shared_mem->_num_pids = 0;
+		memset(shared_memory, 0, sizeof(tShared));
+
+		DPRINTF("%s: Resetting shared memory\n", __FUNCTION__);
+	}
+
+	return ret;
+}
+
+int shared_mem_check(void)
+{
+	if (shared_mem == NULL) {
+		if (shared_mem_init() < 0) {
+			DPRINTF("%s: Cannot shared get memory\n", __FUNCTION__);
+			return -ENOMEM;
+		}
+	}
+
+	return 0;
+}
+
+/* PID functions */
+void utils_pid_add(pid_t pid, char *reason)
+{
+	int num;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return;
+	}
+
+	if (shared_mem->_num_pids + 1 > sizeof(shared_mem->_pids)) {
+		DPRINTF("%s: No space to add a new PID information\n", __FUNCTION__);
+		return;
+	}
+
+	num = shared_mem->_num_pids;
+	shared_mem->_pids[num].pid = pid;
+	if (reason != NULL)
+		strncpy(shared_mem->_pids[num].reason, reason, sizeof(shared_mem->_pids[num].reason));
+	else
+		strcpy(shared_mem->_pids[num].reason, "unknown");
+
+	shared_mem->_num_pids = num + 1;
+
+	DPRINTF("%s: PID #%d added to the shared memory [#%d]\n", __FUNCTION__,
+		pid, shared_mem->_num_pids);
+
+/*
 	if (_pids == NULL) {
-		_pids = (int *)utils_alloc( "utils.utils_pid_add", sizeof(int) );
+		_pids = (tPids *)utils_alloc( "utils.utils_pid_add", sizeof(tPids) );
 		_pids_num = 0;
 	}
 	else
-		_pids = (int *)realloc( _pids, (_pids_num + 1) * sizeof(int) );
+		_pids = (tPids *)realloc( _pids, (_pids_num + 1) * sizeof(tPids) );
 
-	_pids[ _pids_num ] = pid;
+	_pids[ _pids_num ].pid = pid;
+	_pids[ _pids_num ].reason = strdup(reason);
 	_pids_num++;
+*/
+}
+
+void utils_pid_delete(pid_t pid)
+{
+	int i, num;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return;
+	}
+
+	num = shared_mem->_num_pids;
+	for (i = 0; i < shared_mem->_num_pids; i++)
+		if (shared_mem->_pids[i].pid == pid) {
+			shared_mem->_pids[i].pid = shared_mem->_pids[num - 1].pid;
+			strcpy(shared_mem->_pids[i].reason, shared_mem->_pids[num - 1].reason);
+
+			shared_mem->_pids[num - 1].pid = 0;
+			memset(shared_mem->_pids[num - 1].reason, 0, sizeof(shared_mem->_pids[num - 1].reason));
+			num--;
+		}
+
+	shared_mem->_num_pids = num;
+}
+
+int utils_pid_get_num_with_reason(char *reason)
+{
+	int i, num = 0;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return -1;
+	}
+
+	for (i = 0; i < shared_mem->_num_pids; i++)
+		if (strcmp(shared_mem->_pids[i].reason, reason) == 0)
+			num++;
+
+	return num;
+}
+
+int utils_pid_get_host_clients(char *host)
+{
+	char tmp[1024] = { 0 };
+
+	snprintf(tmp, sizeof(tmp), "Hosting:%s", host);
+	return utils_pid_get_num_with_reason(tmp);
 }
 
 void utils_pid_dump(void)
 {
 	int i;
 
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return;
+	}
+
+	for (i = 0; i < shared_mem->_num_pids; i++)
+		dump_printf("PID #%d: %d (reason: %s)\n", i + 1, shared_mem->_pids[i].pid,
+			shared_mem->_pids[i].reason);
+
+/*
 	if (_pids == NULL)
 		return;
 
 	for (i = 0; i < _pids_num; i++)
-		dump_printf("PID #%d: %d\n", i + 1, _pids[i]);
+		dump_printf("PID #%d: %d (reason: %s)\n", i + 1, _pids[i].pid, _pids[i].reason);
+*/
 }
 
 int utils_pid_signal_all(int sig)
 {
 	int i;
+	pid_t pid;
 
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return -1;
+	}
+
+	for (i = 0; i < shared_mem->_num_pids; i++) {
+		pid = shared_mem->_pids[i].pid;
+
+		/* Don't send to controll process itself */
+		if (pid != parent_pid) {
+			DPRINTF("%s: Sending signal %d to PID %d\n",
+				__FUNCTION__, sig, pid);
+			kill(pid, sig);
+		}
+		else
+			DPRINTF("%s: Ignoring parent process (PID #%d)\n",
+				__FUNCTION__, pid );
+	}
+
+	return shared_mem->_num_pids;
+
+/*
 	if (_pids == NULL)
 		return 0;
 
 	for (i = 0; i < _pids_num; i++) {
 		DPRINTF("%s: Sending signal %d to PID %d\n",
-			__FUNCTION__, sig, _pids[i]);
-		kill(_pids[i], sig);
+			__FUNCTION__, sig, _pids[i].pid);
+		kill(_pids[i].pid, sig);
 	}
 
 	return _pids_num;
+*/
 
 }
 
@@ -1304,18 +1487,34 @@ int utils_pid_wait_all(void)
 {
 	int i, new, old;
 
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return -1;
+	}
+
+	new = shared_mem->_num_pids;
+	old = new;
+	for (i = 0; i < new; i++) {
+		waitpid( shared_mem->_pids[i].pid, NULL, 0);
+		new--;
+	}
+
+	return old;
+
+/*
 	if (_pids == NULL)
 		return 0;
 
 	new = _pids_num;
 	old = new;
 	for (i = 0; i < new; i++) {
-		waitpid( _pids[i], NULL, 0 );
+		waitpid( _pids[i].pid, NULL, 0 );
 		new--;
 	}
 	_pids_num = 0;
 
 	return old;
+*/
 }
 
 int utils_pid_kill_all(void)

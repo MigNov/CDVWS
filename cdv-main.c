@@ -200,7 +200,17 @@ void run_servers(int port, int ssl_port)
 
 void atex(void)
 {
+	/* Memory should be freed once all instances are done */
+	if (getpid() == parent_pid) {
+		utils_pid_wait_all();
+
+		DPRINTF("Freeing shared memory\n");
+		shared_mem_free();
+	}
 	total_cleanup();
+
+	DPRINTF("Process with PID #%d exiting now...\n", getpid());
+	utils_pid_delete( getpid() );
 }
 
 void test_alloc(void)
@@ -226,11 +236,20 @@ int main(int argc, char *argv[])
 {
 	int i = 1;
 
-	show_info_banner();
+	atexit( atex );
 
 	test_alloc();
+	show_info_banner();
 
-	atexit( atex );
+	parent_pid = getpid();
+
+	if (shared_mem_init_first() < 0) {
+		DPRINTF("Error: Cannot initialize shared memory segment\n");
+		return 1;
+	}
+
+	utils_pid_add( parent_pid, "Control process");
+
 	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0)) {
 		_shell_enabled = 1;
 		return run_shell( NULL, STDIN );

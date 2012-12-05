@@ -628,7 +628,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 					close(fd[1]);
 					read(fd[0], buf, sizeof(buf));
 					if (strstr(buf, "ERR") == NULL)
-						utils_pid_add( atoi(buf) );
+						utils_pid_add( atoi(buf), "TCP Server" );
 					else
 						waitpid( atoi(buf), NULL, 0 );
 				}
@@ -675,7 +675,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 						close(fd[1]);
 						read(fd[0], buf, sizeof(buf));
 						if (strstr(buf, "ERR") == NULL)
-							utils_pid_add( atoi(buf) );
+							utils_pid_add( atoi(buf), "SSL Server" );
 						else
 							waitpid( atoi(buf), NULL, 0 );
 					}

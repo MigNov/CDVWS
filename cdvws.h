@@ -83,7 +83,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+/* For shared memory */
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+#ifdef USE_PCRE
 #include <pcre.h>
+#endif
 
 #include <libxml/parser.h>
 #include <libxml/xpath.h>
@@ -178,8 +184,21 @@ typedef struct tTokenizer {
 tTokenizer tokenize(char *string, char *by);
 void free_tokens(tTokenizer t);
 
-int *_pids;
-int _pids_num;
+typedef struct tPids {
+	pid_t pid;
+	char reason[1024];
+} tPids;
+
+typedef struct tShared {
+	int _num_pids;
+	tPids _pids[8192];
+} tShared;
+
+tShared *shared_mem;
+pid_t parent_pid;
+
+int shmid;
+void *shared_memory;
 
 typedef struct tConfigVariable {
 	char *filename;
@@ -492,7 +511,8 @@ char *desc_read(BIO *io, int fd);
 int dump_file_is_set(void);
 void dump_unset_file(void);
 struct timespec utils_get_time(int diff);
-void utils_pid_add(int pid);
+void utils_pid_add(pid_t pid, char *reason);
+void utils_pid_delete(pid_t pid);
 void utils_pid_dump(void);
 int utils_pid_kill_all(void);
 int utils_pid_wait_all(void);
@@ -511,6 +531,11 @@ char *process_decoding(char *in, char *type);
 void handlers_set_path(char *path);
 void *utils_alloc(char *var, int len);
 void *utils_free(char *vt, void *var);
+int shared_mem_init(void);
+int shared_mem_init_first(void);
+void shared_mem_free(void);
+int utils_pid_get_host_clients(char *host);
+int utils_pid_get_num_with_reason(char *reason);
 
 /* Project related options */
 void project_info_init(void);

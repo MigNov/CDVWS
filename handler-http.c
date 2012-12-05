@@ -285,7 +285,6 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 
 		DPRINTF("%s: Line %d is '%s'\n", __FUNCTION__, i+1, t.tokens[i]);
 	}
-
 	free_tokens(t);
 
 	if (host == NULL) {
@@ -293,6 +292,14 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		path = utils_free("http.path", path);
 		return http_host_unknown(io, connected, "unknown");
 	}
+
+	char tmph[1024] = { 0 };
+	snprintf(tmph, sizeof(tmph), "Hosting:%s", host);
+	utils_pid_add( getpid(), tmph );
+	utils_pid_dump();
+
+	/* For the future CDV WebServer should support limiting the number of clients */
+	DPRINTF("Number of clients for host: %d\n", utils_pid_get_host_clients(host));
 
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);

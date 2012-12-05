@@ -124,7 +124,7 @@ int run_server(int port, char *pk, char *pub, char *root_key)
 		read(fd[0], buf, sizeof(buf));
 		close(fd[0]);
 		if (strstr(buf, "ERR") == NULL)
-			utils_pid_add( atoi(buf) );
+			utils_pid_add( atoi(buf), "SSL Server" );
 		else
 			waitpid( atoi(buf), NULL, 0 );
 
@@ -166,7 +166,7 @@ int run_server(int port, char *pk, char *pub, char *root_key)
 		read(fd[0], buf, sizeof(buf));
 		close(fd[0]);
 		if (strstr(buf, "ERR") == NULL)
-			utils_pid_add( atoi(buf) );
+			utils_pid_add( atoi(buf), "TCP Server" );
 		else
 			waitpid( atoi(buf), NULL, 0 );
 
