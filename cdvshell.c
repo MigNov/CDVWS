@@ -592,7 +592,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 	if (strcmp(str, "free") == 0) {
 		desc_printf(io, cfd, "Process ID information:\n");
 		desc_printf(io, cfd, "\tMaximum allocation: %6d PID(s)\n", MAX_PIDS);
-		desc_printf(io, cfd, "\t  User identifiers: %6d PID(s)\n", MAX_PIDS - utils_pid_num_free());
+		desc_printf(io, cfd, "\t  Used identifiers: %6d PID(s)\n", MAX_PIDS - utils_pid_num_free());
 		desc_printf(io, cfd, "\t  Free identifiers: %6d PID(s)\n", utils_pid_num_free());
 	}
 	else
