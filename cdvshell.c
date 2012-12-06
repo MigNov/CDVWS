@@ -510,6 +510,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"emulate <method> <data>\t\t\t\t\t- emulate GET or POST method data entry\n"
 			"eval <line>\t\t\t\t\t\t- evaluate the script line\n"
 			"kill <pid>\t\t\t\t\t\t- terminate process <pid>, <pid> have to be child of web server\n"
+			"free\t\t\t\t\t\t\t- show information about total and free shared memory usage\n"
 			"\n"
 			"Testing functions:\n\n"
 			"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
@@ -586,6 +587,13 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		}
 
 		free_tokens(t);
+	}
+	else
+	if (strcmp(str, "free") == 0) {
+		desc_printf(io, cfd, "Process ID information:\n");
+		desc_printf(io, cfd, "\tMaximum allocation: %6d PID(s)\n", MAX_PIDS);
+		desc_printf(io, cfd, "\t  User identifiers: %6d PID(s)\n", MAX_PIDS - utils_pid_num_free());
+		desc_printf(io, cfd, "\t  Free identifiers: %6d PID(s)\n", utils_pid_num_free());
 	}
 	else
 	if (strncmp(str, "run", 3) == 0) {

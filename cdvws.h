@@ -86,6 +86,8 @@
 /* For shared memory */
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#define MAX_PIDS	(1 << 14)
+#define MAX_PID_REASON	(1 << 8)
 
 #ifdef USE_PCRE
 #include <pcre.h>
@@ -186,12 +188,12 @@ void free_tokens(tTokenizer t);
 
 typedef struct tPids {
 	pid_t pid;
-	char reason[1024];
+	char reason[MAX_PID_REASON];
 } tPids;
 
 typedef struct tShared {
 	int _num_pids;
-	tPids _pids[8192];
+	tPids _pids[MAX_PIDS];
 } tShared;
 
 tShared *shared_mem;
@@ -537,6 +539,9 @@ void shared_mem_free(void);
 int utils_pid_get_host_clients(char *host);
 int utils_pid_get_num_with_reason(char *reason);
 int utils_pid_exists(pid_t pid);
+char *format_size(unsigned long value);
+unsigned long calculate_shared_memory_allocation(void);
+int utils_pid_num_free(void);
 
 /* Project related options */
 void project_info_init(void);

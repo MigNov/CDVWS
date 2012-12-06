@@ -235,6 +235,7 @@ void show_info_banner(void)
 int main(int argc, char *argv[])
 {
 	int i = 1;
+	unsigned long shmsize;
 
 	atexit( atex );
 
@@ -243,6 +244,8 @@ int main(int argc, char *argv[])
 
 	parent_pid = getpid();
 
+	shmsize = calculate_shared_memory_allocation();
+	DPRINTF("Allocating %s of shared memory\n", format_size(shmsize));
 	if (shared_mem_init_first() < 0) {
 		DPRINTF("Error: Cannot initialize shared memory segment\n");
 		return 1;

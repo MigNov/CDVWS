@@ -1260,6 +1260,53 @@ char *process_decoding(char *in, char *type)
 }
 
 /* Shared memory functions */
+char *format_size(unsigned long value)
+{
+	char tmp[16] = { 0 };
+
+	if (value > 1048576)
+		snprintf(tmp, sizeof(tmp), "%.2f MiB", (double)value / 1048576);
+	else
+	if (value > 1024)
+		snprintf(tmp, sizeof(tmp), "%.2f kiB", (double)value / 1024);
+        else
+		snprintf(tmp, sizeof(tmp), "%u B", (unsigned int)value);
+
+	return strdup(tmp);
+}
+
+unsigned long calculate_shared_memory_allocation(void)
+{
+	unsigned int sPids = sizeof(tPids);
+	unsigned int tsPids;
+	unsigned long totalMem;
+
+	DPRINTF("Shared memory requirements:%c", '\n');
+	DPRINTF("===========================%c", '\n');
+
+	DPRINTF("%c", '\n');
+	DPRINTF("Structure lengths:%c", '\n');
+	DPRINTF("\tPids: %u bytes (reason string length is %d bytes)\n", sPids, MAX_PID_REASON);
+
+	DPRINTF("%c", '\n');
+	DPRINTF("Limits:%c", '\n');
+	DPRINTF("\tPids: %u\n", MAX_PIDS);
+
+	/* Useless construction for now but maybe good for future when we may have more
+	 * structures in the shared memory */
+	tsPids = MAX_PIDS * sPids;
+	totalMem = tsPids;
+
+	DPRINTF("%c", '\n');
+	DPRINTF("Total structure sizes:%c", '\n');
+	DPRINTF("\tPids: %s\n", format_size(tsPids));
+
+	DPRINTF("%c", '\n');
+	DPRINTF("Total memory required: %s\n", format_size(totalMem));
+
+	return totalMem;
+}
+
 tShared *shared_mem_setup(void)
 {
 	shmid = -1;
@@ -1400,11 +1447,29 @@ int utils_pid_exists(pid_t pid)
 {
 	int i;
 
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return -1;
+	}
+
 	for (i = 0; i < shared_mem->_num_pids; i++)
 		if (shared_mem->_pids[i].pid == pid)
 			return 1;
 
 	return 0;
+}
+
+int utils_pid_num_free(void)
+{
+	int num;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return -1;
+	}
+
+	num = shared_mem->_num_pids;
+	return MAX_PIDS - num;
 }
 
 int utils_pid_get_num_with_reason(char *reason)
