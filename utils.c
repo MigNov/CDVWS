@@ -1507,8 +1507,6 @@ unsigned long calculate_shared_memory_allocation(void)
 	DPRINTF("\tPids: %u\n", MAX_PIDS);
 	DPRINTF("\tHosting information: %d\n", MAX_HOSTING);
 
-	/* Useless construction for now but maybe good for future when we may have more
-	 * structures in the shared memory */
 	tsPids = MAX_PIDS * sPids;
 	tsHosting = MAX_HOSTING * sHosting;
 	totalMem = tsPids + tsHosting;

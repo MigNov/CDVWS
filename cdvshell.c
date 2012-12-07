@@ -636,6 +636,8 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		}
 		else
 			desc_printf(io, cfd, "Syntax: geoip <database-file> <ip>\n");
+
+		free_tokens(t);
 	}
 	else
 	#endif
