@@ -14,6 +14,14 @@ kerberos.secure_path = /private
 kerberos.realm = EXAMPLE.COM
 kerberos.realm_basic = Example Realm
 
+# GeoIP Database
+geoip.enable = true
+geoip.file = geoip/GeoLiteCity.dat
+# Information to be exposed to the script, they are in GEOIP_* prefixed variables,
+# e.g. COUNTRY is located in GEOIP_COUNTRY, CITY in GEOIP_CITY etc.
+#geoip.expose = COUNTRY REGION CITY POSTAL_CODE LONGITUDE LATITUDE
+geoip.expose = COUNTRY CITY LONGITUDE LATITUDE
+
 # Project settings
 project.name = Test project
 project.administrator.name = Michal Novotny

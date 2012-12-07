@@ -271,7 +271,7 @@ int idb_query(char *query)
 			t2 = tokenize( strstr(query, "COMMENT") + 9, "'" );
 			cm = t2.tokens[0];
 		}
-		ret = idb_table_create(name, t.numTokens, fd, cm);
+		ret = idb_table_create(trim(name), t.numTokens, fd, cm);
 		free_tokens(t2);
 		free_tokens(t);
 	}

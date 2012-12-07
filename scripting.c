@@ -112,6 +112,13 @@ int _script_builtin_function(char *var, char *fn, char *args)
 		}
 	}
 	else
+	if (strcmp(fn, "sleep") == 0) {
+		int num = atoi(args);
+
+		DPRINTF("%s: Sleeping for %d seconds...\n", __FUNCTION__, num);
+		sleep(num);
+	}
+	else
 	if (strcmp(fn, "dumptype") == 0) {
 		char *str = variable_get_type_string(args, "any");
 
@@ -350,7 +357,7 @@ int script_process_line(char *buf)
 		goto cleanup;
 	}
 
-	/* Comparison with no ternary operator support */
+	/* Comparison with no ternary operator support... yet */
 	if (regex_match("if \\(([^(]*)([^)]*)\\)", buf)) {
 		if (regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf)) {
 			char **matches = NULL;
@@ -360,11 +367,8 @@ int script_process_line(char *buf)
 			matches = (char **)utils_alloc( "scripting.script_process_line.matches", sizeof(char *) );
 			_regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf, matches, &num_matches);
 
-			val = variable_get_element_as_string(trim(matches[0]), NULL);
-			if ((val != NULL) && (strcmp(val, trim(matches[1])) == 0))
-				_script_in_condition_and_met = 1;
-			else
-				_script_in_condition_and_met = 0;
+			if (num_matches >= 2)
+				_script_in_condition_and_met = (valcmp(matches[0], matches[1]) == 0) ? 1 : 0;
 
 			for (i = 0; i < num_matches; i++)
 				matches[i] = utils_free("scripting.condition.matches[]", matches[i]);
@@ -547,7 +551,7 @@ int script_process_line(char *buf)
 		DPRINTF("%s: Not implemented yet\n", __FUNCTION__);
 
 cleanup:
-	if ((_perf_measure) && ((ts.tv_nsec > 0) && (ts.tv_sec > 0))) {
+	if ((_perf_measure) && ((ts.tv_nsec > 0) && (ts.tv_sec > 0)) && (_script_in_condition_and_met > 0)) {
 		tse = utils_get_time( TIME_CURRENT );
 		desc_printf(gIO, gFd, "PERF: Line \"%s\" was being processed for %.3f microseconds (%.3f ms)\n\n",
 			buf, get_time_float_us( tse, ts ), get_time_float_us(tse, ts) / 1000.);

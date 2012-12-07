@@ -211,6 +211,7 @@ void atex(void)
 
 	DPRINTF("Process with PID #%d exiting now...\n", getpid());
 	utils_pid_delete( getpid() );
+	utils_hosting_delete( getpid() );
 }
 
 void test_alloc(void)
@@ -224,12 +225,13 @@ void test_alloc(void)
 void show_info_banner(void)
 {
 	printf("CDV WebServer v%s (%s minCrypt support, %s PCRE support, %s GNU Readline support, %s Kerberos 5 support over GSS-API, "
-		"%s MySQL database support)\n\n", VERSION,
+		"%s MySQL database support, %s GeoIP support)\n\n", VERSION,
 		USE_MINCRYPT ? "with" : "without",
 		USE_PCRE ? "with" : "without",
 		USE_READLINE ? "with" : "without",
 		USE_KERBEROS ? "with" : "without",
-		USE_MYSQL ? "with" : "without");
+		USE_MYSQL ? "with" : "without",
+		USE_GEOIP ? "with" : "without");
 }
 
 int main(int argc, char *argv[])

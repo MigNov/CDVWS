@@ -8,11 +8,12 @@
 #define TYPE_ARRAY      0x10
 #define TYPE_STRUCT     0x20
 
-#define TYPE_QGET       0x01
-#define TYPE_QPOST      0x02
-#define TYPE_QSCRIPT    0x04
-#define TYPE_MODULE	0x08
-#define TYPE_MODAUTH	0x10
+#define TYPE_BASE	0x01
+#define TYPE_QGET       TYPE_BASE + 0x01
+#define TYPE_QPOST      TYPE_BASE + 0x02
+#define TYPE_QSCRIPT    TYPE_BASE + 0x04
+#define TYPE_MODULE	TYPE_BASE + 0x08
+#define TYPE_MODAUTH	TYPE_BASE + 0x10
 
 #include <time.h>
 #include <stdio.h>

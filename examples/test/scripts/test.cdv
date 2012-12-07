@@ -1,0 +1,68 @@
+<$
+	define testvar auto;
+	define testvar2 string;
+
+	x = get('perf');
+	if (x == 1) {
+		enable_perf(true);
+	}
+
+	/* TODO: Fix when there are parenthesis in the string */
+	printf("You are connected from IP address %s\n", REMOTE_IP);
+	printf("Location is %s, %s\n", GEOIP_CITY, GEOIP_COUNTRY);
+
+	if (GEOIP_COUNTRY == 'CZ') {
+		printf("Ok, we're in the Czech Republic!\n");
+	}
+
+	printf("Username is %s\n", USERNAME);
+	printf("You're using %s\n", USER_AGENT);
+
+	z = 34;
+	a = 2;
+
+	if (unset(x)) {
+		x = 1;
+	}
+
+	print('Value of z is: ');
+	print(z);
+	print('\n');
+
+	printf("BEFORE: Value of z is: %s, a: %s\n", z, a);
+
+	a += 2;
+	a *= 2;
+	z /= 2;
+	z -= 2;
+
+	printf("AFTER: Value of z is: %s, a: %s\n", z, a);
+
+	//set_all_variables_overwritable(true);
+
+	z = 123;
+	del(z);
+	z = 123;
+	printf("Value of z is: %s\n", z);
+
+	idb_query("testdata.cdb", "SELECT * FROM test");
+	// idb_dump_query_set();
+	// idb_query(@test.idb);
+
+	if (z == 123) {
+		printf("<b>Condition of test for 123 has been met</b>\n");
+	}
+	else {
+		printf("<i>Condition of test for 123 has not been met<i>\n");
+	}
+
+	if (z == 111) {
+		printf("<b>Condition of test for 111 has been met</b>\n");
+	}
+	else {
+		printf("<i>Condition of test for 111 has not been met</i>\n");
+	}
+
+	// Uncomment for debugging purposes to emulate long queries
+	// sleep(5);
+$>

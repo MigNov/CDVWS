@@ -293,14 +293,6 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		return http_host_unknown(io, connected, "unknown");
 	}
 
-	char tmph[1024] = { 0 };
-	snprintf(tmph, sizeof(tmph), "Hosting:%s", host);
-	utils_pid_add( getpid(), tmph );
-	utils_pid_dump();
-
-	/* For the future CDV WebServer should support limiting the number of clients */
-	DPRINTF("Number of clients for host: %d\n", utils_pid_get_host_clients(host));
-
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
@@ -392,6 +384,20 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		cleanup();
 		return http_host_unknown(io, connected, host);
 	}
+
+	char tmph[1024] = { 0 };
+	snprintf(tmph, sizeof(tmph), "Hosting:%s", host);
+	utils_pid_add( getpid(), tmph );
+	utils_hosting_add( getpid(), client_addr, host, path, ua );
+
+	variable_add_fl("REMOTE_IP", inet_ntoa(client_addr.sin_addr), TYPE_BASE, -1, TYPE_STRING, 1);
+	variable_add_fl("HOST", host, TYPE_BASE, -1, TYPE_STRING, 1);
+	variable_add_fl("PATH", path, TYPE_BASE, -1, TYPE_STRING, 1);
+	variable_add_fl("METHOD", method, TYPE_BASE, -1, TYPE_STRING, 1);
+	variable_add_fl("USER_AGENT", ua, TYPE_BASE, -1, TYPE_STRING, 1);
+
+	/* For the future CDV WebServer should support limiting the number of clients */
+	DPRINTF("Number of clients for host: %d\n", utils_pid_get_host_clients(host));
 
 	DPRINTF("Host %s is being served by PID #%d\n", host, getpid());
 
@@ -491,20 +497,22 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 				char loc[4096] = { 0 };
 				if (tmp != NULL) {
 					snprintf(loc, sizeof(loc), "%s/%s%s.cdv", tmp, dir, filename);
-					DPRINTF("%s: Script file is '%s'\n", __FUNCTION__, loc);
-					script_set_descriptors(io, connected, 1);
-					gHost = strdup(host);
-					if (run_script(loc) != 0) {
-						http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, host, "text/html", NULL, myRealm, 0);
+					if (access(loc, R_OK) == 0) {
+						DPRINTF("%s: Script file is '%s'\n", __FUNCTION__, loc);
+						script_set_descriptors(io, connected, 1);
+						gHost = strdup(host);
+						if (run_script(loc) != 0) {
+							http_host_header(io, connected, HTTP_CODE_BAD_REQUEST, host, "text/html", NULL, myRealm, 0);
+							cleanup();
+							return 1;
+						}
+
+						DPRINTF("%s: Script run successfully\n", __FUNCTION__);
+						method = utils_free("http.method", method);
+						path = utils_free("http.path", path);
 						cleanup();
 						return 1;
 					}
-
-					DPRINTF("%s: Script run successfully\n", __FUNCTION__);
-					method = utils_free("http.method", method);
-					path = utils_free("http.path", path);
-					cleanup();
-					return 1;
 				}
 			}
 		}

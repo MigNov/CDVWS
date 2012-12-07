@@ -381,10 +381,11 @@ void variable_dump(void)
 		DPRINTF("\tId: %d\n", _vars[i].id);
 		DPRINTF("\tIdParent: %d\n", _vars[i].idParent);
 		DPRINTF("\tVariable source: %s\n",
-			(_vars[i].q_type == TYPE_QPOST) ? "POST Request" :
+			(_vars[i].q_type == TYPE_BASE) ? "Server core" :
+			((_vars[i].q_type == TYPE_QPOST) ? "POST Request" :
 			((_vars[i].q_type == TYPE_QGET) ? "GET Request" :
 			((_vars[i].q_type == TYPE_MODULE) ? "MODULE Processing" :
-			((_vars[i].q_type == TYPE_MODAUTH) ? "AUTH MODULE Processing" : "SCRIPT Processing"))));
+			((_vars[i].q_type == TYPE_MODAUTH) ? "AUTH MODULE Processing" : "SCRIPT Processing")))));
 		DPRINTF("\tName: %s\n", _vars[i].name ? _vars[i].name : "<null>");
 		DPRINTF("\tAllow overwrite: %d (local %d)\n", variable_get_overwrite(_vars[i].name),
 				 _vars[i].allow_overwrite);
@@ -425,6 +426,7 @@ int variable_lookup_name_idx(char *name, char *type, int idParent)
 				if (_vars[i].idParent == idParent) {
 					if ((
 					((type == NULL) || (strcasecmp(type, "any") == 0))
+					|| ((_vars[i].q_type == TYPE_BASE) && (strcasecmp(type, "base") == 0))
 					|| ((_vars[i].q_type == TYPE_QPOST) && (strcasecmp(type, "post") == 0)))
 					|| ((_vars[i].q_type == TYPE_QGET) && (strcasecmp(type, "get") == 0))
 					|| ((_vars[i].q_type == TYPE_MODULE) && (strcasecmp(type, "module") == 0))

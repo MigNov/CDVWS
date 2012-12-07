@@ -56,11 +56,12 @@
 #define TYPE_ARRAY	0x10
 #define TYPE_STRUCT	0x20
 
-#define TYPE_QGET	0x01
-#define TYPE_QPOST	0x02
-#define TYPE_QSCRIPT	0x04
-#define TYPE_MODULE	0x08
-#define TYPE_MODAUTH	0x10
+#define TYPE_BASE	0x01
+#define TYPE_QGET	TYPE_BASE + 0x01
+#define TYPE_QPOST	TYPE_BASE + 0x02
+#define TYPE_QSCRIPT	TYPE_BASE + 0x04
+#define TYPE_MODULE	TYPE_BASE + 0x08
+#define TYPE_MODAUTH	TYPE_BASE + 0x10
 
 #include <time.h>
 #include <stdio.h>
@@ -86,8 +87,15 @@
 /* For shared memory */
 #include <sys/ipc.h>
 #include <sys/shm.h>
+
+#define MAX_PID_REASON  (1 << 7)
+
+#ifndef MAX_PIDS
 #define MAX_PIDS	(1 << 14)
-#define MAX_PID_REASON	(1 << 8)
+#endif
+#ifndef MAX_HOSTING
+#define MAX_HOSTING	MAX_PIDS
+#endif
 
 #ifdef USE_PCRE
 #include <pcre.h>
@@ -113,6 +121,15 @@
 
 #ifdef USE_MYSQL
 #include <mysql/mysql.h>
+#endif
+
+#ifdef USE_GEOIP
+#include <GeoIP.h>
+#include <GeoIPCity.h>
+
+uint32_t _GeoIP_lookupaddress(const char *host);
+geoipv6_t _GeoIP_lookupaddress_v6 (const char *host);
+int __GEOIP_V6_IS_NULL(geoipv6_t v6);
 #endif
 
 #ifdef USE_MINCRYPT
@@ -186,14 +203,45 @@ typedef struct tTokenizer {
 tTokenizer tokenize(char *string, char *by);
 void free_tokens(tTokenizer t);
 
+#ifdef USE_GEOIP
+typedef struct tGeoIPInfo {
+	int type;
+	char addr[48];
+	int ipv6;
+	char country_code[3];
+	char region[16];
+	char city[32];
+	char postal_code[8];
+	float geo_lat;
+	float geo_long;
+} tGeoIPInfo;
+#endif
+
 typedef struct tPids {
 	pid_t pid;
 	char reason[MAX_PID_REASON];
 } tPids;
 
+typedef struct tHosting {
+	pid_t pid;
+
+	/* Hosting information */
+#ifdef USE_GEOIP
+	tGeoIPInfo geoip;
+#else
+	char addr[48];
+#endif
+	char host[128];
+	char path[512];
+	char browser[128];
+	/* Maybe connect with IMs for something */
+} tHosting;
+
 typedef struct tShared {
 	int _num_pids;
 	tPids _pids[MAX_PIDS];
+	int _num_hosting;
+	tHosting _hosting[MAX_HOSTING]; /* TODO: Needs to be defined! */
 } tShared;
 
 tShared *shared_mem;
@@ -232,6 +280,9 @@ typedef struct tProjectInformation {
 	char *kerb_secure_path;
 	char *kerb_realm;
 	char *kerb_realm_fb;
+	char *geoip_enable;
+	char *geoip_file;
+	char *geoip_expose;
 } tProjectInformation;
 
 typedef struct tAttr {
@@ -542,6 +593,16 @@ int utils_pid_exists(pid_t pid);
 char *format_size(unsigned long value);
 unsigned long calculate_shared_memory_allocation(void);
 int utils_pid_num_free(void);
+void utils_hosting_add(pid_t pid, struct sockaddr_in client_addr, char *host, char *path, char *browser);
+void utils_hosting_delete(pid_t pid);
+void utils_hosting_dump(void);
+int utils_hosting_num_free(void);
+int valcmp(char *a1, char *a2);
+
+#ifdef USE_GEOIP
+tGeoIPInfo geoip_get_info(char *geoip_file, char *ip);
+void geoip_info_dump(tGeoIPInfo geoip_info);
+#endif
 
 /* Project related options */
 void project_info_init(void);

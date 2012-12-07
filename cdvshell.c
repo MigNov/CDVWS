@@ -432,6 +432,9 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			if (strcmp(t.tokens[1], "pids") == 0)
 				utils_pid_dump();
 			else
+			if (strcmp(t.tokens[1], "hostings") == 0)
+				utils_hosting_dump();
+			else
 			if (strcmp(t.tokens[1], "xml") == 0)
 				xml_dump();
 			else
@@ -446,7 +449,9 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 					"dump vars\t- dump variables for the project\n"
 					"dump config\t- dump project configuration only\n\n"
 					"Internal shell options:\n\n"
-					"dump pids\t- dump server PIDs\n\n");
+					"dump pids\t- dump server PIDs\n"
+					"dump hostings\t- dump information about hosting-related processes\n"
+					"\n");
 			else
 				desc_printf(io, cfd, "Unknown option for dump\n");
 		}
@@ -495,6 +500,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		desc_printf(io, cfd, "MinCrypt support: %s\n", USE_MINCRYPT ? "yes" : "no");
 		desc_printf(io, cfd, "GNU Readline support: %s\n", USE_READLINE ? "yes" : "no");
 		desc_printf(io, cfd, "MySQL database support: %s\n", USE_MYSQL ? "yes" : "no");
+		desc_printf(io, cfd, "GeoIP database support: %s\n", USE_GEOIP ? "yes" : "no");
 		desc_printf(io, cfd, "Kerberos 5 support over GSS-API: %s\n\n", USE_KERBEROS ? "yes" : "no");
 		desc_printf(io, cfd, "No modules found\n");
 	}
@@ -511,6 +517,9 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"eval <line>\t\t\t\t\t\t- evaluate the script line\n"
 			"kill <pid>\t\t\t\t\t\t- terminate process <pid>, <pid> have to be child of web server\n"
 			"free\t\t\t\t\t\t\t- show information about total and free shared memory usage\n"
+			#ifdef USE_GEOIP
+			"geoip <database-file> <ip>\t\t\t\t- get IP information for <ip> from GeoIP <database-file>\n"
+			#endif
 			"\n"
 			"Testing functions:\n\n"
 			"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
@@ -594,8 +603,42 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		desc_printf(io, cfd, "\tMaximum allocation: %6d PID(s)\n", MAX_PIDS);
 		desc_printf(io, cfd, "\t  Used identifiers: %6d PID(s)\n", MAX_PIDS - utils_pid_num_free());
 		desc_printf(io, cfd, "\t  Free identifiers: %6d PID(s)\n", utils_pid_num_free());
+		desc_printf(io, cfd, "Hosting information:\n");
+		desc_printf(io, cfd, "\tMaximum allocation: %6d information\n", MAX_HOSTING);
+		desc_printf(io, cfd, "\t  Used identifiers: %6d information\n", MAX_HOSTING - utils_hosting_num_free());
+		desc_printf(io, cfd, "\t  Free identifiers: %6d information\n", utils_hosting_num_free());
 	}
 	else
+	#ifdef USE_GEOIP
+	if (strncmp(str, "geoip", 5) == 0) {
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens == 3) {
+			tGeoIPInfo geoip_info = geoip_get_info(t.tokens[1], t.tokens[2]);
+
+			if (geoip_info.type == -1) {
+				if ((strcmp(geoip_info.addr, "127.0.0.1") == 0)
+					|| (strcmp(geoip_info.addr, "::1") == 0))
+					desc_printf(io, cfd, "%s: Address 127.0.0.1 is local address. No information available.\n",
+						str);
+				else
+					desc_printf(io, cfd, "%s: Address %s not found\n", str, geoip_info.addr);
+			}
+			else {
+				if (geoip_info.type == GEOIP_COUNTRY_EDITION)
+					desc_printf(io, cfd, "%s: IPv%d: %s, Type: Country Edition, Country: %s\n", t.tokens[2], geoip_info.ipv6 ? 6 : 4,
+						geoip_info.addr, geoip_info.country_code);
+		        	else
+					desc_printf(io, cfd, "%s: IPv%d: %s, Type: City Edition, Country: %s, Region: %s, City: %s, Postal Code: %s, Latitude: %f, "
+						"Longitude: %f\n", t.tokens[2], geoip_info.ipv6 ? 6 : 4, geoip_info.addr, geoip_info.country_code,
+							geoip_info.region, geoip_info.city, geoip_info.postal_code, geoip_info.geo_lat, geoip_info.geo_long);
+			}
+		}
+		else
+			desc_printf(io, cfd, "Syntax: geoip <database-file> <ip>\n");
+	}
+	else
+	#endif
 	if (strncmp(str, "run", 3) == 0) {
 		tTokenizer t = tokenize(str, " ");
 

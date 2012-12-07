@@ -256,6 +256,10 @@ void project_info_init(void)
 	project_info.kerb_secure_path = NULL;
 	project_info.kerb_realm = NULL;
 	project_info.kerb_realm_fb = NULL;
+
+	project_info.geoip_enable = NULL;
+	project_info.geoip_expose = NULL;
+	project_info.geoip_file = NULL;
 }
 
 void project_info_fill(void)
@@ -284,6 +288,10 @@ void project_info_fill(void)
 	project_info.kerb_secure_path = config_get("kerberos", "secure_path");
 	project_info.kerb_realm = config_get("kerberos", "realm");
 	project_info.kerb_realm_fb = config_get("kerberos", "realm_basic");
+
+	project_info.geoip_enable = config_get("geoip", "enable");
+	project_info.geoip_expose = config_get("geoip", "expose");
+	project_info.geoip_file = config_get("geoip", "file");
 
 	DPRINTF("%s: Project information structure set\n", __FUNCTION__);
 }
@@ -338,6 +346,21 @@ void project_info_dump(void)
 
 	if (project_info.kerb_realm_fb != NULL) {
 		dump_printf("\tKerberos realm for Basic authorization: %s\n", project_info.kerb_realm_fb);
+		num++;
+	}
+
+	if (project_info.geoip_enable != NULL) {
+		dump_printf("\tGeoIP Enabled: %s\n", project_info.geoip_enable);
+		num++;
+	}
+
+	if (project_info.geoip_file != NULL) {
+		dump_printf("\tGeoIP File: %s\n", project_info.geoip_file);
+		num++;
+	}
+
+	if (project_info.geoip_expose != NULL) {
+		dump_printf("\tGeoIP Expose Variables: %s\n", project_info.geoip_expose);
 		num++;
 	}
 
@@ -433,6 +456,12 @@ char *project_info_get(char *type)
 		return strdup(project_info.kerb_realm);
 	if ((project_info.kerb_realm_fb) && (strcmp(type, "kerberos_realm_fallback") == 0))
 		return strdup(project_info.kerb_realm_fb);
+	if ((project_info.geoip_enable) && (strcmp(type, "geoip_enable") == 0))
+		return strdup(project_info.geoip_enable);
+	if ((project_info.geoip_file) && (strcmp(type, "geoip_file") == 0))
+		return strdup(project_info.geoip_file);
+	if ((project_info.geoip_expose) && (strcmp(type, "geoip_expose") == 0))
+		return strdup(project_info.geoip_expose);
 	if ((project_info.path_rewriter != NULL) && (strcmp(type, "path_rewriter") == 0))
 		return strdup(project_info.path_rewriter);
 
@@ -462,6 +491,9 @@ void project_info_cleanup(void)
 	project_info.kerb_secure_path = utils_free("utils.project_info_cleanup", project_info.kerb_secure_path);
 	project_info.kerb_realm = utils_free("utils.project_info_cleanup", project_info.kerb_realm);
 	project_info.kerb_realm_fb = utils_free("utils.project_info_cleanup", project_info.kerb_realm_fb);
+	project_info.geoip_enable = utils_free("utils.project_info_cleanup", project_info.geoip_enable);
+	project_info.geoip_file = utils_free("utils.project_info_cleanup", project_info.geoip_file);
+	project_info.geoip_expose = utils_free("utils.project_info_cleanup", project_info.geoip_expose);
 
 	/* To set to NULLs */
 	project_info_init();
@@ -1259,6 +1291,185 @@ char *process_decoding(char *in, char *type)
 	return NULL;
 }
 
+int valcmp(char *a1, char *a2)
+{
+	if ((a1 == NULL) || (a2 == NULL))
+		return 0;
+
+	if ((strlen(a1) > 0) && ((a1[0] == '\'') || (a1[0] == '"'))) {
+		*a1++;
+
+		a1[strlen(a1) - 1] = 0;
+	}
+	else {
+		char *tmp = variable_get_element_as_string(trim(a1), NULL);
+		if (tmp)
+			a1 = tmp;
+		else
+			a1 = trim(a1);
+	}
+
+	if ((strlen(a2) > 0) && ((a2[0] == '\'') || (a2[0] == '"'))) {
+		*a2++;
+
+		a2[strlen(a2) - 1] = 0;
+	}
+	else {
+		char *tmp = variable_get_element_as_string(trim(a2), NULL);
+
+		if (tmp)
+			a2 = tmp;
+		else
+			a2 = trim(a2);
+	}
+
+	return strcmp(a1, a2);
+}
+
+#ifdef USE_GEOIP
+tGeoIPInfo geoip_get_info(char *geoip_file, char *ip)
+{
+	GeoIP		*gi = NULL;
+	GeoIPRecord	*gir = NULL;
+	uint32_t	ipnum;
+	const char	*country_code;
+	int		country_id, i;
+	tGeoIPInfo	GeoIPInfo;
+	int		ipv6 = 0;
+
+	DPRINTF("%s: Querying database for IP address %s information\n", __FUNCTION__, ip);
+
+	/* No data acquired */
+	GeoIPInfo.type = -1;
+
+	#ifdef GEOIP_LOCAL_OVERRIDE
+	if (strcmp(ip, "127.0.0.1") == 0) {
+		unsigned char tmp[4];
+		char tmp2[16];
+
+		UINT32STR(tmp, GEOIP_LOCAL_OVERRIDE);
+		snprintf(tmp2, sizeof(tmp2), "%d.%d.%d.%d", tmp[0], tmp[1], tmp[2], tmp[3]);
+		ip = strdup(tmp2);
+
+		DPRINTF("%s: Overridding local IP to test IP %s\n", __FUNCTION__, ip);
+	}
+	#endif
+
+	memset(GeoIPInfo.addr, 0, sizeof(GeoIPInfo.addr));
+	memcpy(GeoIPInfo.addr, ip, sizeof(GeoIPInfo.addr));
+
+	memset(GeoIPInfo.country_code, 0, sizeof(GeoIPInfo.country_code));
+	memset(GeoIPInfo.city, 0, sizeof(GeoIPInfo.city));
+	memset(GeoIPInfo.region, 0, sizeof(GeoIPInfo.region));
+	memset(GeoIPInfo.postal_code, 0, sizeof(GeoIPInfo.postal_code));
+
+	strcpy(GeoIPInfo.country_code, "Unknown");
+	strcpy(GeoIPInfo.city, "Unknown");
+	strcpy(GeoIPInfo.region, "Unknown");
+	strcpy(GeoIPInfo.postal_code, "Unknown");
+
+	/* If we have colon in the IP address string it's most likely IPv6 address */
+	if (strchr((char *)ip, ':') != NULL) {
+		ipv6 = 1;
+		DPRINTF("%s: Address %s seems to be IPv6 address\n", __FUNCTION__, ip);
+	}
+
+	gi = GeoIP_open(geoip_file, GEOIP_STANDARD);
+	if (gi == NULL)
+		return GeoIPInfo;
+
+	i = GeoIP_database_edition(gi);
+	if (!ipv6) {
+		ipnum = _GeoIP_lookupaddress(ip);
+		if (ipnum == 0)
+			return GeoIPInfo;
+	}
+	else {
+		if (__GEOIP_V6_IS_NULL(_GeoIP_lookupaddress_v6(ip)))
+			return GeoIPInfo;
+	}
+
+	GeoIPInfo.ipv6 = ipv6;
+
+	if ((i == GEOIP_CITY_EDITION_REV0) || (i == GEOIP_CITY_EDITION_REV1)
+		|| (i == GEOIP_CITY_EDITION_REV0_V6) || (i == GEOIP_CITY_EDITION_REV1_V6)) {
+		if (ipv6) {
+			DPRINTF("%s: Querying GeoIP/GeoLite City Edition for IPv6\n", __FUNCTION__);
+			if ((i == GEOIP_CITY_EDITION_REV0_V6) || (i == GEOIP_CITY_EDITION_REV1_V6))
+				gir = GeoIP_record_by_name_v6(gi, ip);
+		}
+		else {
+			DPRINTF("%s: Querying GeoIP/GeoLite City Edition for IPv4\n", __FUNCTION__);
+			if ((i == GEOIP_CITY_EDITION_REV0) || (i == GEOIP_CITY_EDITION_REV1))
+				gir = GeoIP_record_by_ipnum(gi, ipnum);
+		}
+
+		if (gir != NULL) {
+			GeoIPInfo.type = GEOIP_CITY_EDITION_REV1;
+
+			strncpy(GeoIPInfo.country_code, gir->country_code ? gir->country_code : "-", sizeof(GeoIPInfo.country_code));
+			strncpy(GeoIPInfo.region, gir->region ? gir->region : "-", sizeof(GeoIPInfo.region));
+			strncpy(GeoIPInfo.city, gir->city ? gir->city : "-", sizeof(GeoIPInfo.city));
+			strncpy(GeoIPInfo.postal_code, gir->postal_code ? gir->postal_code : "-", sizeof(GeoIPInfo.postal_code));
+			GeoIPInfo.geo_lat = gir->latitude;
+			GeoIPInfo.geo_long = gir->longitude;
+			GeoIPRecord_delete(gir);
+		}
+	}
+	else
+	if ((i == GEOIP_COUNTRY_EDITION) || (i == GEOIP_COUNTRY_EDITION_V6)) {
+		if (i == GEOIP_COUNTRY_EDITION_V6) {
+			const char *tmp = GeoIP_country_code_by_name_v6(gi, ip);
+
+			DPRINTF("%s: Querying GeoIP/GeoLite Country Edition for IPv6\n", __FUNCTION__);
+			if (tmp != NULL) {
+				GeoIPInfo.type = GEOIP_COUNTRY_EDITION;
+
+				strncpy(GeoIPInfo.country_code, tmp, sizeof(GeoIPInfo.country_code));
+			}
+		}
+		else {
+			country_id = GeoIP_id_by_ipnum(gi, ipnum);
+			country_code = GeoIP_country_code[country_id];
+
+			DPRINTF("%s: Querying GeoIP/GeoLite Country Edition for IPv4\n", __FUNCTION__);
+			if (country_id > 0) {
+				GeoIPInfo.type = GEOIP_COUNTRY_EDITION;
+
+				strncpy(GeoIPInfo.country_code, country_code, sizeof(GeoIPInfo.country_code));
+			}
+		}
+	}
+
+	GeoIP_delete(gi);
+	GeoIP_cleanup();
+
+	return GeoIPInfo;
+}
+
+void geoip_info_dump(tGeoIPInfo geoip_info)
+{
+	if (geoip_info.type == -1) {
+		if ((strcmp(geoip_info.addr, "127.0.0.1") == 0)
+			|| (strcmp(geoip_info.addr, "::1") == 0))
+			DPRINTF("%s: Address 127.0.0.1 is local address. No information available.\n",
+				__FUNCTION__);
+		else
+			DPRINTF("%s: Address %s not found\n", __FUNCTION__, geoip_info.addr);
+
+		return;
+	}
+
+	if (geoip_info.type == GEOIP_COUNTRY_EDITION)
+		DPRINTF("%s: IPv%d: %s, Type: %d, Country: %s\n", __FUNCTION__, geoip_info.ipv6 ? 6 : 4,
+			geoip_info.addr, geoip_info.type, geoip_info.country_code);
+        else
+                DPRINTF("%s: IPv%d: %s, Type: %d, Country: %s, Region: %s, City: %s, Postal Code: %s, Lat: %f, Long: %f\n",
+                        __FUNCTION__, geoip_info.ipv6 ? 6 : 4, geoip_info.addr, geoip_info.type, geoip_info.country_code,
+                        geoip_info.region, geoip_info.city, geoip_info.postal_code, geoip_info.geo_lat, geoip_info.geo_long);
+}
+#endif
+
 /* Shared memory functions */
 char *format_size(unsigned long value)
 {
@@ -1278,7 +1489,9 @@ char *format_size(unsigned long value)
 unsigned long calculate_shared_memory_allocation(void)
 {
 	unsigned int sPids = sizeof(tPids);
+	unsigned int sHosting = sizeof(tHosting);
 	unsigned int tsPids;
+	unsigned int tsHosting;
 	unsigned long totalMem;
 
 	DPRINTF("Shared memory requirements:%c", '\n');
@@ -1287,19 +1500,23 @@ unsigned long calculate_shared_memory_allocation(void)
 	DPRINTF("%c", '\n');
 	DPRINTF("Structure lengths:%c", '\n');
 	DPRINTF("\tPids: %u bytes (reason string length is %d bytes)\n", sPids, MAX_PID_REASON);
+	DPRINTF("\tHosting information: %u bytes\n", sHosting);
 
 	DPRINTF("%c", '\n');
 	DPRINTF("Limits:%c", '\n');
 	DPRINTF("\tPids: %u\n", MAX_PIDS);
+	DPRINTF("\tHosting information: %d\n", MAX_HOSTING);
 
 	/* Useless construction for now but maybe good for future when we may have more
 	 * structures in the shared memory */
 	tsPids = MAX_PIDS * sPids;
-	totalMem = tsPids;
+	tsHosting = MAX_HOSTING * sHosting;
+	totalMem = tsPids + tsHosting;
 
 	DPRINTF("%c", '\n');
 	DPRINTF("Total structure sizes:%c", '\n');
 	DPRINTF("\tPids: %s\n", format_size(tsPids));
+	DPRINTF("\tHosting information: %s\n", format_size(tsHosting));
 
 	DPRINTF("%c", '\n');
 	DPRINTF("Total memory required: %s\n", format_size(totalMem));
@@ -1359,6 +1576,7 @@ int shared_mem_init_first(void)
 
 	if (ret == 0) {
 		shared_mem->_num_pids = 0;
+		shared_mem->_num_hosting = 0;
 		memset(shared_memory, 0, sizeof(tShared));
 
 		DPRINTF("%s: Resetting shared memory\n", __FUNCTION__);
@@ -1377,6 +1595,184 @@ int shared_mem_check(void)
 	}
 
 	return 0;
+}
+
+/* Hosting database functions */
+void utils_hosting_add(pid_t pid, struct sockaddr_in client_addr, char *host, char *path, char *browser)
+{
+	int num;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return;
+	}
+
+	if (shared_mem->_num_hosting + 1 > sizeof(shared_mem->_hosting)) {
+		DPRINTF("%s: No space to add a new PID information\n", __FUNCTION__);
+		return;
+	}
+
+	num = shared_mem->_num_hosting;
+	#ifdef USE_GEOIP
+	char *tmp = project_info_get("geoip_enable");
+	project_info_dump();
+	if (get_boolean(tmp)) {
+		char *fn = project_info_get("geoip_file");
+		if (fn != NULL) {
+			char *exp = project_info_get("geoip_expose");
+			shared_mem->_hosting[num].geoip = geoip_get_info(fn, inet_ntoa(client_addr.sin_addr));
+			geoip_info_dump(shared_mem->_hosting[num].geoip);
+
+			if (exp != NULL) {
+				int i;
+				tTokenizer t;
+
+				t = tokenize(exp, " ");
+				for (i = 0; i < t.numTokens; i++) {
+					if (strcmp(t.tokens[i], "COUNTRY") == 0) {
+						if (shared_mem->_hosting[num].geoip.type == -1)
+							variable_add_fl("GEOIP_COUNTRY", "Private or unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+						else
+							variable_add_fl("GEOIP_COUNTRY", shared_mem->_hosting[num].geoip.country_code,
+								TYPE_MODULE, -1, TYPE_STRING, 1);
+					}
+					else
+					if (strcmp(t.tokens[i], "REGION") == 0) {
+						if ((shared_mem->_hosting[num].geoip.type == -1)
+							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
+							variable_add_fl("GEOIP_REGION", "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+						else
+							variable_add_fl("GEOIP_REGION", shared_mem->_hosting[num].geoip.region,
+								TYPE_MODULE, -1, TYPE_STRING, 1);
+					}
+					else
+					if (strcmp(t.tokens[i], "CITY") == 0) {
+						if ((shared_mem->_hosting[num].geoip.type == -1)
+							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
+							variable_add_fl("GEOIP_CITY", "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+						else
+							variable_add_fl("GEOIP_CITY", shared_mem->_hosting[num].geoip.city,
+								TYPE_MODULE, -1, TYPE_STRING, 1);
+					}
+					else
+					if (strcmp(t.tokens[i], "POSTAL_CODE") == 0) {
+						if ((shared_mem->_hosting[num].geoip.type == -1)
+							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
+							variable_add_fl("GEOIP_POSTAL_CODE", "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+						else
+							variable_add_fl("GEOIP_POSTAL_CODE",  shared_mem->_hosting[num].geoip.postal_code,
+								TYPE_MODULE, -1, TYPE_STRING, 1);
+					}
+					else
+					if (strcmp(t.tokens[i], "LONGITUDE") == 0) {
+						if ((shared_mem->_hosting[num].geoip.type == -1)
+							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
+							variable_add_fl("GEOIP_LONGITUDE",  "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+						else {
+							char tmp[16] = { 0 };
+							snprintf(tmp, sizeof(tmp), "%f", shared_mem->_hosting[num].geoip.geo_long);
+
+							variable_add_fl("GEOIP_LONGITUDE", tmp,	TYPE_MODULE, -1, TYPE_DOUBLE, 1);
+						}
+					}
+					else
+					if (strcmp(t.tokens[i], "LATITUDE") == 0) {
+						if ((shared_mem->_hosting[num].geoip.type == -1)
+							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
+							variable_add_fl("GEOIP_LATITUDE",  "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+						else {
+							char tmp[16] = { 0 };
+							snprintf(tmp, sizeof(tmp), "%f", shared_mem->_hosting[num].geoip.geo_lat);
+
+							variable_add_fl("GEOIP_LATITUDE", tmp, TYPE_MODULE, -1, TYPE_DOUBLE, 1);
+					}
+					}
+					else
+						DPRINTF("%s: Cannot expose '%s'. Unknown GeoIP value\n", __FUNCTION__, t.tokens[i]);
+				}
+
+				free_tokens(t);
+			}
+
+			utils_free("utils.utils_hosting_add.exp", exp);
+		}
+		utils_free("utils.utils_hosting_add.fn", fn);
+	}
+	else
+		strncpy(shared_mem->_hosting[num].geoip.addr, inet_ntoa(client_addr.sin_addr), sizeof(shared_mem->_hosting[num].geoip.addr));
+	utils_free("utils.utils_hosting_add.tmp", tmp);
+	#else
+	strncpy(shared_mem->_hosting[num].addr, inet_ntoa(client_addr.sin_addr), sizeof(shared_mem->_hosting[num].addr));
+	#endif
+	shared_mem->_hosting[num].pid = pid;
+	strncpy(shared_mem->_hosting[num].host, host, sizeof(shared_mem->_hosting[num].host));
+	strncpy(shared_mem->_hosting[num].path, path, sizeof(shared_mem->_hosting[num].path));
+	strncpy(shared_mem->_hosting[num].browser, browser, sizeof(shared_mem->_hosting[num].browser));
+	shared_mem->_num_hosting = num + 1;
+
+	DPRINTF("%s: PID #%d added to shared memory with hosting information for %s [#%d]\n",
+		__FUNCTION__, pid, inet_ntoa(client_addr.sin_addr), shared_mem->_num_hosting);
+}
+
+void utils_hosting_delete(pid_t pid)
+{
+	int i, num;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return;
+	}
+
+	num = shared_mem->_num_hosting;
+	for (i = 0; i < shared_mem->_num_hosting; i++)
+		if (shared_mem->_hosting[i].pid == pid) {
+			shared_mem->_hosting[i].pid = shared_mem->_hosting[num - 1].pid;
+			strcpy(shared_mem->_hosting[i].path, shared_mem->_hosting[num - 1].path);
+			strcpy(shared_mem->_hosting[i].host, shared_mem->_hosting[num - 1].host);
+			strcpy(shared_mem->_hosting[i].browser, shared_mem->_hosting[num - 1].browser);
+
+			shared_mem->_hosting[num - 1].pid = 0;
+			memset(shared_mem->_hosting[num - 1].host, 0, sizeof(shared_mem->_hosting[num - 1].host));
+			memset(shared_mem->_hosting[num - 1].path, 0, sizeof(shared_mem->_hosting[num - 1].path));
+			memset(shared_mem->_hosting[num - 1].browser, 0, sizeof(shared_mem->_hosting[num - 1].browser));
+			num--;
+	}
+
+	shared_mem->_num_hosting = num;
+}
+
+void utils_hosting_dump(void)
+{
+	int i;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return;
+	}
+
+	for (i = 0; i < shared_mem->_num_hosting; i++) {
+	#ifdef USE_GEOIP
+		tGeoIPInfo gip = shared_mem->_hosting[i].geoip;
+
+		dump_printf("Process #%d: PID #%d, IP %s, host %s, path %s, browser is '%s'\n",
+			i + 1, shared_mem->_hosting[i].pid, shared_mem->_hosting[i].geoip.addr,
+			shared_mem->_hosting[i].host, shared_mem->_hosting[i].path,
+			shared_mem->_hosting[i].browser);
+
+		if (gip.type == GEOIP_COUNTRY_EDITION)
+			dump_printf("\tGeoIP = { country: %s }\n",
+				gip.country_code);
+		else
+		if (gip.type != -1)
+			dump_printf("\tGeoIP = { country: %s, region: %s, city: %s, postal code: %s, latitude: %f, longitude: %f }\n",
+				gip.country_code, gip.region, gip.city, gip.postal_code, gip.geo_lat, gip.geo_long);
+	#else
+		dump_printf("Process #%d: PID #%d, IP %s, host %s, path %s, browser %s\n",
+			i + 1, shared_mem->_hosting[i].pid, shared_mem->_hosting[i].addr,
+			shared_mem->_hosting[i].host, shared_mem->_hosting[i].path,
+			shared_mem->_hosting[i].browser);
+	#endif
+	}
 }
 
 /* PID functions */
@@ -1470,6 +1866,19 @@ int utils_pid_num_free(void)
 
 	num = shared_mem->_num_pids;
 	return MAX_PIDS - num;
+}
+
+int utils_hosting_num_free(void)
+{
+	int num;
+
+	if (shared_mem_check() < 0) {
+		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
+		return -1;
+	}
+
+	num = shared_mem->_num_hosting;
+	return MAX_HOSTING - num;
 }
 
 int utils_pid_get_num_with_reason(char *reason)
