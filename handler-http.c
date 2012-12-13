@@ -50,20 +50,24 @@ void http_host_header(BIO *io, int connected, int error_code, char *host, char *
 	}
 
 	if (cookie != NULL) {
-		strcat(tmp, "\nSet-Cookie: ");
-		strcat(tmp, cookie);
+		if (strchr(cookie, '&') != NULL) {
+			int i;
+			tTokenizer t;
+
+			t = tokenize(cookie, "&");
+			for (i = 0; i < t.numTokens; i++) {
+				strcat(tmp, "\nSet-Cookie: ");
+				strcat(tmp, t.tokens[i]);
+			}
+			free_tokens(t);
+		}
+		else {
+			strcat(tmp, "\nSet-Cookie: ");
+			strcat(tmp, cookie);
+		}
 	}
 
 	if (realm != NULL) {
-/*
-		if (strcmp(realm, "<NEGOTIATE>") == 0)
-			strcat(tmp, "\nWWW-Authenticate: Negotiate");
-		else {
-			strcat(tmp, "\nWWW-Authenticate: Basic realm=\"");
-			strcat(tmp, realm);
-			strcat(tmp, "\"");
-		}
-*/
 		strcat(tmp, "\nWWW-Authenticate: Negotiate");
 		strcat(tmp, "\nWWW-Authenticate: Basic realm=\"");
 		strcat(tmp, realm);
@@ -153,6 +157,62 @@ int http_host_page_not_found(BIO *io, int connected, char *path)
 	return 1;
 }
 
+int http_host_idbadmin(BIO *io, int connected, char *path, int numiDBFiles, char **dbfiles)
+{
+	char tmp[TCP_BUF_SIZE_SMALL] = { 0 };
+	char tmpb[TCP_BUF_SIZE_SMALL] = { 0 };
+	char xtmp[1024] = { 0 };
+	int i;
+
+	snprintf(tmpb, sizeof(tmpb), "<html><head><title>iDBAdmin</title><body><h1>iDBAdmin</h1>"
+				"<form method=\"POST\">Please select your database file: <select name=\"idbfile\">");
+
+	for (i = 0; i < numiDBFiles; i++) {
+		memset(xtmp, 0, sizeof(xtmp));
+		snprintf(xtmp, sizeof(xtmp), "<option>%s</option>", dbfiles[i]);
+
+		strcat(tmpb, xtmp);
+	}
+
+	snprintf(xtmp, sizeof(xtmp), "</select><input type=\"submit\" value=\" Open database \"></form><hr />"
+		"<b><u>%s</u></b> running on CDV WebServer v%s."
+		"</body></html>", project_info_get("name"), VERSION);
+
+	strcat(tmpb, xtmp);
+
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 200 OK\nContent-Type: text/html\n"
+			 "Content-Length: %d\n\n%s", (int)strlen(tmpb), tmpb);
+
+	write_common(io, connected, tmp, strlen(tmp));
+	return 1;
+}
+
+int http_host_login_form(BIO *io, int connected, char *title, char *field_username, char *field_password, char *data)
+{
+	char tmp[TCP_BUF_SIZE_SMALL] = { 0 };
+	char tmpb[TCP_BUF_SIZE_SMALL] = { 0 };
+
+	if (data != NULL)
+		snprintf(tmp, sizeof(tmp), "<input type=\"hidden\" name=\"data\" value=\"%s\">", data);
+
+	snprintf(tmpb, sizeof(tmpb), "<html><head><title>%s</title><body><h1>%s</h1>"
+		 "<form method=\"POST\"><table><tr align=\"right\"><td>Username: </td>"
+		"<td><input type=\"text\" name=\"%s\"></td></tr><tr align=\"right\">"
+		"<td>Password: </td><td><input type=\"password\" name=\"%s\"></tr>"
+		"<tr><td colspan=\"2\" align=\"center\"><input type=\"submit\" value=\""
+		" Login into database \"></td></table>%s</form><hr /><b><u>%s</u></b>"
+		" running on CDV WebServer v%s.</body></html>", title, title,
+		field_username, field_password, tmp,
+		project_info_get("name"), VERSION);
+
+	memset(tmp, 0, sizeof(tmp));
+	snprintf(tmp, sizeof(tmp), "HTTP/1.1 200 OK\nContent-Type: text/html\n"
+			"Content-Length: %d\n\n%s", (int)strlen(tmpb), tmpb);
+
+	write_common(io, connected, tmp, strlen(tmp));
+	return 1;
+}
+
 void http_parse_data(char *data, int tp)
 {
 	tTokenizer t, t2;
@@ -179,9 +239,9 @@ void http_parse_data(char *data, int tp)
 			name[ strlen(name) - 2 ] = 0;
 
 			if ((idParent = variable_lookup_name_idx(name, (tp == TYPE_QPOST) ? "post" : "get", idParent)) == -1)
-				idParent = variable_add(name, NULL, tp, -1, TYPE_ARRAY);
+				idParent = variable_add_fl(name, NULL, tp, -1, TYPE_ARRAY, 1);
 
-			variable_add(NULL, value, tp, idParent, gettype(value));
+			variable_add_fl(NULL, value, tp, idParent, gettype(value), 1);
 		}
 		else
 		if (strstr(name, "[") != NULL) {
@@ -192,15 +252,47 @@ void http_parse_data(char *data, int tp)
 			name[strlen(name) - strlen(subname) - 1] = 0;
 
 			if ((idParent = variable_lookup_name_idx(name, (tp == TYPE_QPOST) ? "post" : "get", idParent)) == -1)
-				idParent = variable_add(name, NULL, tp, -1, TYPE_STRUCT);
+				idParent = variable_add_fl(name, NULL, tp, -1, TYPE_STRUCT, 1);
 
-			variable_add(subname, value, tp, idParent, gettype(value));
+			variable_add_fl(subname, value, tp, idParent, gettype(value), 1);
 		}
 		else
-			variable_add(name, value, tp, -1, gettype(value));
+			variable_add_fl(name, value, tp, -1, gettype(value), 1);
 
 		name = utils_free("http.http_parse_data.name", name);
 		value = utils_free("http.http_parse_data.value", value);
+	}
+	free_tokens(t);
+}
+
+void http_parse_cookies(char *cookies)
+{
+	int i;
+	tTokenizer t, t2;
+	char *tmp = NULL;
+	char *name = NULL;
+	char *value = NULL;
+
+	if (cookies == NULL)
+		return;
+
+	t = tokenize(cookies, ";");
+	for (i = 0; i < t.numTokens; i++) {
+		tmp = trim(t.tokens[i]);
+
+		t2 = tokenize(tmp, "=");
+		if (t2.numTokens == 2) {
+			name = trim(t2.tokens[0]);
+			value = trim(t2.tokens[1]);
+
+			variable_add_fl(name, value, TYPE_COOKIE, -1, gettype(value), 1);
+
+			name = utils_free("handler-http.http_parse_cookies.name", name);
+			value = utils_free("handler-http.http_parse_cookies.value", value);
+		}
+		free_tokens(t2);
+
+		tmp = utils_free("handler-http.http_parse_cookies.tmp", tmp);
 	}
 	free_tokens(t);
 }
@@ -213,7 +305,7 @@ void http_parse_data_getpost(char *get, char *post)
 	variable_dump();
 }
 
-int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len)
+int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_storage client_addr, int client_addr_len, char *buf, int len)
 {
 	int i, found;
 	tTokenizer t;
@@ -222,6 +314,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	char *path = NULL;
 	char *method = NULL;
 	char *cookie = NULL;
+	char *cookies = NULL;
 	char *params_get = NULL;
 	char *params_post = NULL;
 
@@ -296,42 +389,49 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 	DPRINTF("%s: %s for '%s://%s%s', user agent is '%s'\n", __FUNCTION__, method,
 		(ssl == NULL) ? "http" : "https", host, path, ua);
 
-	if (((cookie != NULL) && (strstr(cookie, "CDVCookie=") == NULL)) || (cookie == NULL)) {
-		char *tmp = NULL;
-		char cdvcookie[33] = { 0 };
-		char fn[1024] = { 0 };
-		char hex[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+	if (cookie != NULL) {
+		DPRINTF("%s: Cookie is not NULL\n", __FUNCTION__);
+		cookies = strdup(cookie);
 
-		for (i = 0; i < 32; i++) {
-			srand(time(NULL) + i);
-			cdvcookie[i] = hex[rand() % strlen(hex)];
-		}
+		if (((strstr(cookie, "CDVCookie=") == NULL)) || (cookie == NULL)) {
+			char *tmp = NULL;
+			char cdvcookie[33] = { 0 };
+			char fn[1024] = { 0 };
+			char hex[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-		snprintf(fn, sizeof(fn), "/tmp/cdvdb-%s", cdvcookie);
-		while (access(fn, R_OK) == 0) {
 			for (i = 0; i < 32; i++) {
 				srand(time(NULL) + i);
 				cdvcookie[i] = hex[rand() % strlen(hex)];
 			}
 
 			snprintf(fn, sizeof(fn), "/tmp/cdvdb-%s", cdvcookie);
+			while (access(fn, R_OK) == 0) {
+				for (i = 0; i < 32; i++) {
+					srand(time(NULL) + i);
+					cdvcookie[i] = hex[rand() % strlen(hex)];
+				}
+
+				snprintf(fn, sizeof(fn), "/tmp/cdvdb-%s", cdvcookie);
+			}
+
+			tmp = (char *)utils_alloc( "handler-http.process_request_common.cdvcookie", strlen("CDVCookie=;") + strlen(cdvcookie) );
+			sprintf(tmp, "CDVCookie=%s\n", cdvcookie);
+			cookie = tmp;
+
+			_cdv_cookie = strdup(cdvcookie);
+		}
+		else {
+			char *tmp = strstr(cookie, "CDVCookie=") + 10;
+
+			for (i = 0; i < strlen(tmp); i++) {
+				if ((tmp[i] == ';') || (tmp[i] == '\n'))
+					tmp[i] = 0;
+			}
+
+			_cdv_cookie = tmp;
 		}
 
-		tmp = (char *)utils_alloc( "handler-http.process_request_common.cdvcookie", strlen("CDVCookie=;") + strlen(cdvcookie) );
-		sprintf(tmp, "CDVCookie=%s\n", cdvcookie);
-		cookie = tmp;
-
-		_cdv_cookie = strdup(cdvcookie);
-	}
-	else {
-		char *tmp = strstr(cookie, "CDVCookie=") + 10;
-
-		for (i = 0; i < strlen(tmp); i++) {
-			if ((tmp[i] == ';') || (tmp[i] == '\n'))
-				tmp[i] = 0;
-		}
-
-		_cdv_cookie = tmp;
+		DPRINTF("%s: CDV Cookie is %s\n", __FUNCTION__, _cdv_cookie);
 	}
 
 	/* First check if user requires shell access */
@@ -385,12 +485,112 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		return http_host_unknown(io, connected, host);
 	}
 
+	http_parse_data_getpost(params_get, params_post);
+	http_parse_cookies(cookies);
+
+	char *tmp = project_info_get("idbadmin_enable");
+	if ((get_boolean(tmp)) && (strncmp(path, "/idbadmin", 9) == 0)) {
+		int ret = 0;
+
+		char *tmp2 = project_info_get("idbadmin_table");
+		if (tmp2 != NULL) {
+			char tmpi[4096] = { 0 };
+
+			snprintf(tmpi, sizeof(tmpi), "%s/database", _proj_root_dir);
+
+			if (strcmp(method, "GET") == 0) {
+				DIR *d = opendir(tmpi);
+				if (d != NULL) {
+					int numiDBFiles = 0;
+					char tmpi2[2048] = { 0 };
+					struct dirent *de = NULL;
+					char **dbfiles = utils_alloc( "handler-http.process_request_common.dbfiles", sizeof(char **) );
+					while ((de = readdir(d)) != NULL) {
+						if ((strlen(de->d_name) > 0) && (de->d_name[0] != '.')) {
+							memset(tmpi2, 0, sizeof(tmpi2));
+							snprintf(tmpi2, sizeof(tmpi2), "%s/%s", tmpi, de->d_name);
+
+							if (idb_table_exists(tmpi2, tmp2) == 1) {
+								dbfiles = realloc( dbfiles, (numiDBFiles + 1) * sizeof(char **) );
+								dbfiles[numiDBFiles++] = strdup(de->d_name);
+
+								DPRINTF("%s: Table %s exists in %s\n", __FUNCTION__, tmp2, tmpi2);
+							}
+						}
+					}
+
+					ret = http_host_idbadmin(io, connected, path, numiDBFiles, dbfiles);
+					for (i = 0; i < numiDBFiles; i++)
+						utils_free("handler-http.process_request_common.dbfiles[]", dbfiles[i]);
+
+					dbfiles = utils_free("handler-http.process_request_common.dbfiles", dbfiles);
+				}
+			}
+			else
+			if (strcmp(method, "POST") == 0) {
+				char *tmp = variable_get_element_as_string("idbfile", "POST");
+				if (tmp != NULL)
+					ret = http_host_login_form(io, connected, "Login to iDBAdmin", "username", "password", tmp);
+				tmp = utils_free("handler-http.idbadmin", tmp);
+
+				/* Element 'data' in POST is available as part of login form */
+				tmp = variable_get_element_as_string("data", "POST");
+				if (tmp != NULL) {
+					char *user = variable_get_element_as_string("username", "POST");
+					char *pass = variable_get_element_as_string("password", "POST");
+
+					/* Concatenate strings */
+					strcat(tmpi, "/");
+					strcat(tmpi, tmp);
+
+					/* Authorization handling */
+					if (idb_authorize(tmpi, tmp2, user, pass) <= 0)
+						ret = http_host_login_form(io, connected, "Login to iDBAdmin failed",
+							"username", "password", tmp);
+					else {
+						char *hash = NULL;
+						char cookie[4096] = { 0 };
+
+						DPRINTF("SUCCESSFULLY OPENED THE DATABASE FILE: %s\n", tmp);
+
+						hash = generate_hash(pass, user, 128);
+						snprintf(cookie, sizeof(cookie), "idbfile=%s&user=%s&hash=%s", tmp, user, hash);
+						hash = utils_free("handler-http.idbadmin", hash);
+
+						http_host_header(io, connected, 200, host, "text/html", cookie, NULL, 0);
+
+						write_common(io, connected, "IDB", 3);
+						ret = 1;
+					}
+
+					user = utils_free("handler-http.idbadmin", user);
+					pass = utils_free("handler-http.idbadmin", pass);
+				}
+				tmp = utils_free("handler-http.idbadmin", tmp);
+
+				variable_dump();
+			}
+		}
+		tmp2 = utils_free("handler-http.process_request_common.tmp2", tmp2);
+		if (ret != 0) {
+			method = utils_free("http.method", method);
+			path = utils_free("http.path", path);
+			cleanup();
+			return ret;
+		}
+	}
+	tmp = utils_free("handler-http.process_request_common.tmp", tmp);
+
 	char tmph[1024] = { 0 };
 	snprintf(tmph, sizeof(tmph), "Hosting:%s", host);
 	utils_pid_add( getpid(), tmph );
-	utils_hosting_add( getpid(), client_addr, host, path, ua );
 
-	variable_add_fl("REMOTE_IP", inet_ntoa(client_addr.sin_addr), TYPE_BASE, -1, TYPE_STRING, 1);
+	utils_hosting_add( getpid(), client_addr, client_addr_len, host, path, ua );
+
+	char ip[20] = { 0 };
+	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST);
+
+	variable_add_fl("REMOTE_IP", get_ip_address(ip), TYPE_BASE, -1, TYPE_STRING, 1);
 	variable_add_fl("HOST", host, TYPE_BASE, -1, TYPE_STRING, 1);
 	variable_add_fl("PATH", path, TYPE_BASE, -1, TYPE_STRING, 1);
 	variable_add_fl("METHOD", method, TYPE_BASE, -1, TYPE_STRING, 1);
@@ -469,8 +669,6 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in 
 		}
 	}
 	#endif
-
-	http_parse_data_getpost(params_get, params_post);
 
 	/* Then try to look for the file in files */
 	char *dir = NULL;

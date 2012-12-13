@@ -362,7 +362,6 @@ int script_process_line(char *buf)
 		if (regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf)) {
 			char **matches = NULL;
 			int i, num_matches;
-			char *val = NULL;
 
 			matches = (char **)utils_alloc( "scripting.script_process_line.matches", sizeof(char *) );
 			_regex_match("if \\(([^(]*) == ([^)]*)\\) {", buf, matches, &num_matches);

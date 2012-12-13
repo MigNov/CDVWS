@@ -517,6 +517,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"eval <line>\t\t\t\t\t\t- evaluate the script line\n"
 			"kill <pid>\t\t\t\t\t\t- terminate process <pid>, <pid> have to be child of web server\n"
 			"free\t\t\t\t\t\t\t- show information about total and free shared memory usage\n"
+			"hash <string> <salt> <len>\t\t\t\t- generate hash for <string> as based on <salt> with length of <len>\n"
 			#ifdef USE_GEOIP
 			"geoip <database-file> <ip>\t\t\t\t- get IP information for <ip> from GeoIP <database-file>\n"
 			#endif
@@ -609,6 +610,24 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		desc_printf(io, cfd, "\t  Free identifiers: %6d information\n", utils_hosting_num_free());
 	}
 	else
+	if (strncmp(str, "hash", 4) == 0) {
+		tTokenizer t = tokenize(str, " ");
+
+		if (t.numTokens < 4)
+			desc_printf(io, cfd, "Syntax: hash <string> <salt> <len>\n");
+		else {
+			char *str = t.tokens[1];
+			char *salt = t.tokens[2];
+			int len = atoi(t.tokens[3]);
+
+			if (len < 16)
+				desc_printf(io, cfd, "Cannot generate hash, length have to be greated than 15\n");
+			else
+				desc_printf(io, cfd, "Hash is %s\n", generate_hash(str, salt, len));
+		}
+		free_tokens(t);
+	}
+	else
 	#ifdef USE_GEOIP
 	if (strncmp(str, "geoip", 5) == 0) {
 		tTokenizer t = tokenize(str, " ");
@@ -672,6 +691,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			if (t.numTokens < 4)
 				desc_printf(io, cfd, "Syntax: run server <http|https> <port> [<params>]\n");
 			else {
+/*
 				if (strcmp(t.tokens[2], "http") == 0) {
 					int fd[2];
 					char buf[128] = { 0 };
@@ -694,7 +714,6 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 						exit(0);
 					}
 
-					/* Try to wait to spawn server, if it fails we will know */
 					usleep(50000);
 
 					close(fd[1]);
@@ -745,7 +764,6 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 							exit(0);
 						}
 
-						/* Try to wait to spawn server, if it fails we will know */
 						usleep(50000);
 
 						close(fd[1]);
@@ -759,6 +777,64 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 						else
 							waitpid( atoi(buf), NULL, 0 );
 					}
+				}
+*/
+				if (strcmp(t.tokens[2], "http") == 0) {
+					int flags = TCP_IPV4 | TCP_IPV6;
+					int port = atoi(t.tokens[3]);
+					if (t.numTokens == 5) {
+						if (strcmp(t.tokens[4], "ipv4") == 0)
+							flags = TCP_IPV4;
+						else
+						if (strcmp(t.tokens[4], "ipv6") == 0)
+							flags = TCP_IPV6;
+						else
+						if (strcmp(t.tokens[4], "ipv6only") == 0)
+							flags = TCP_IPV6 | TCP_V6ONLY;
+					}
+					free_tokens(t);
+					if ((port > 0) && (port < 65536))
+						run_server( port, NULL, NULL, NULL, flags);
+					else
+						desc_printf(io, cfd, "Syntax: run server http <port> [ipv4|ipv6|ipv6only] - "
+							"port have to be in range between 0 and 65536 excl.\n");
+				}
+				else
+				if (strcmp(t.tokens[2], "https") == 0) {
+					if (t.numTokens < 7)
+						desc_printf(io, cfd, "Syntax: run server <http|https> <port> <private-key>"
+							"<public-key> <root-key>\n");
+					else {
+						int port;
+						int flags = TCP_IPV4 | TCP_IPV6;
+						char *s1 = NULL;
+						char *s2 = NULL;
+						char *s3 = NULL;
+
+						port = atoi(t.tokens[3]);
+						s1 = strdup(t.tokens[4]);
+						s2 = strdup(t.tokens[5]);
+						s3 = strdup(t.tokens[6]);
+
+						if (t.numTokens == 8) {
+							if (strcmp(t.tokens[4], "ipv4") == 0)
+								flags = TCP_IPV4;
+							else
+							if (strcmp(t.tokens[4], "ipv6") == 0)
+								flags = TCP_IPV6;
+							else
+							if (strcmp(t.tokens[4], "ipv6only") == 0)
+								flags = TCP_IPV6 | TCP_V6ONLY;
+						}
+						free_tokens(t);
+
+						if ((port > 0) && (port < 65536))
+							run_server( port, s1, s2, s3, flags);
+						else
+							desc_printf(io, cfd, "Syntax: run server <http|https> <port> <private-key>"
+								"<public-key> <root-key>\n");
+					}
+					free_tokens(t);
 				}
 				else
 					desc_printf(io, cfd, "Syntax: run server <http|https> <port> <params>\n");

@@ -34,6 +34,7 @@ do { fprintf(stderr, "[cdv/utils       ] " fmt , args); } while (0)
 
 int first_initialize(int enabled)
 {
+	_tcp_sock_fds_num = 0;
 	_dump_fp = NULL;
 	_shell_project_loaded = 0;
 	_shell_history_file = NULL;
@@ -199,6 +200,118 @@ char *generate_hex_chars(int len)
 	return tmp;
 }
 
+char *generate_hash(char *str, char *salt, int len)
+{
+	int olen;
+	int i, j, c, k, l;
+	char *ret = NULL;
+	char tmp[1024] = { 0 };
+
+	if (len % 2 != 0) {
+		DPRINTF("%s: Invalid length. Length have to be multiple of 2\n", __FUNCTION__);
+		return NULL;
+	}
+
+	olen = len;
+
+	/* Divide length by two first */
+	len /= 2;
+
+	ret = (char *)utils_alloc( "utils.generate_hash.ret", (olen + 1) * sizeof(char) );
+	memset(ret, 0, ((2 * len) + 1) * sizeof(char));
+
+	/* First of all we generate the initial salt value */
+	j = 0;
+	for (i = 0; i < strlen(salt); i++)
+		j += salt[i];
+
+	DPRINTF("%s: Computed initial salt value to 0x%x\n", __FUNCTION__, j);
+
+	/* Then we generate the initial string value */
+	k = 0;
+	for (i = 0; i < strlen(str); i++)
+		k += str[i];
+
+	l = j;
+	j *= k;
+	k /= l;
+
+	j += olen - l;
+	k *= olen;
+
+	DPRINTF("%s: Computed initial string value to 0x%x\n", __FUNCTION__, k);
+
+	/* And we iterate all the string and do hash calculations */
+	for (i = 0; i < strlen(str); i++) {
+		c = (str[(i + k) % strlen(str)] * salt[(i + j) % strlen(salt)] + j) % 65536;
+		DPRINTF("%s: c#%03d: %06d, j = %10d, k = %5d, c(h) = 0x%04x\n", __FUNCTION__, i, c, j, k, c);
+
+		snprintf(tmp, sizeof(tmp), "%04x", c);
+		strcat(ret, tmp);
+
+		l = str[i] & salt[i % strlen(salt)];
+		switch (l % 16) {
+			case 0: k += l; j += l;
+				break;
+			case 1: k += l; j -= l;
+				break;
+			case 2: k += l; j *= l;
+				break;
+			case 3: k += l; j /= l;
+				break;
+			case 4: k -= l; j += l;
+				break;
+			case 5: k -= l; j -= l;
+				break;
+			case 6: k -= l; j *= l;
+				break;
+			case 7: k -= l; j /= l;
+				break;
+			case 8: k *= l; j += l;
+				break;
+			case 9: k *= l; j -= l;
+				break;
+			case 10: k *= l; j *= l;
+				break;
+			case 11: k *= l; j /= l;
+				break;
+			case 12: k /= l; j += l;
+				break;
+			case 13: k /= l; j -= l;
+				break;
+			case 14: k /= l; j *= l;
+				break;
+			case 15: k /= l; j /= l;
+				break;
+		}
+	}
+
+	DPRINTF("%s: Total entropy length in hexadecimal format is %d bytes\n",
+		__FUNCTION__, (int)strlen(ret));
+
+	/* Calculate rest to the required hash length */
+	j += strlen(ret);
+	while (strlen(ret) < olen) {
+		j += k * l;
+
+		snprintf(tmp, sizeof(tmp), "%04x", ((j + k - l) * (int)strlen(ret)) % 65536 );
+		if (((2 * len) + 1) - strlen(ret) < 4)
+			tmp[ ((2 * len) + 1) - (int)strlen(ret) - 1 ] = 0;
+		strcat(ret, tmp);
+	}
+
+	ret[olen] = 0;
+
+	DPRINTF("%s: Total hash length in hexadecimal format is %d bytes\n",
+		__FUNCTION__, (int)strlen(ret));
+
+	DPRINTF("%s('%s', '%s', %d) returning %d bytes\n", __FUNCTION__, str, salt, olen,
+		(int)strlen(ret));
+	DPRINTF("    returning '%s'\n", ret);
+
+	return ret;
+}
+
 int data_write(int fd, const void *data, size_t len, long *size)
 {
 	size_t sz;
@@ -260,6 +373,9 @@ void project_info_init(void)
 	project_info.geoip_enable = NULL;
 	project_info.geoip_expose = NULL;
 	project_info.geoip_file = NULL;
+
+	project_info.idbadmin_enable = NULL;
+	project_info.idbadmin_table = NULL;
 }
 
 void project_info_fill(void)
@@ -292,6 +408,9 @@ void project_info_fill(void)
 	project_info.geoip_enable = config_get("geoip", "enable");
 	project_info.geoip_expose = config_get("geoip", "expose");
 	project_info.geoip_file = config_get("geoip", "file");
+
+	project_info.idbadmin_enable = config_get("idbadmin", "enable");
+	project_info.idbadmin_table = config_get("idbadmin", "admintbl");
 
 	DPRINTF("%s: Project information structure set\n", __FUNCTION__);
 }
@@ -361,6 +480,16 @@ void project_info_dump(void)
 
 	if (project_info.geoip_expose != NULL) {
 		dump_printf("\tGeoIP Expose Variables: %s\n", project_info.geoip_expose);
+		num++;
+	}
+
+	if (project_info.idbadmin_enable != NULL) {
+		dump_printf("\tiDB Admin: %s\n", project_info.idbadmin_enable);
+		num++;
+	}
+
+	if (project_info.idbadmin_table != NULL) {
+		dump_printf("\tiDB Admin Table: %s\n", project_info.idbadmin_table);
 		num++;
 	}
 
@@ -462,6 +591,10 @@ char *project_info_get(char *type)
 		return strdup(project_info.geoip_file);
 	if ((project_info.geoip_expose) && (strcmp(type, "geoip_expose") == 0))
 		return strdup(project_info.geoip_expose);
+	if ((project_info.idbadmin_enable) && (strcmp(type, "idbadmin_enable") == 0))
+		return strdup(project_info.idbadmin_enable);
+	if ((project_info.idbadmin_table) && (strcmp(type, "idbadmin_table") == 0))
+		return strdup(project_info.idbadmin_table);
 	if ((project_info.path_rewriter != NULL) && (strcmp(type, "path_rewriter") == 0))
 		return strdup(project_info.path_rewriter);
 
@@ -494,6 +627,8 @@ void project_info_cleanup(void)
 	project_info.geoip_enable = utils_free("utils.project_info_cleanup", project_info.geoip_enable);
 	project_info.geoip_file = utils_free("utils.project_info_cleanup", project_info.geoip_file);
 	project_info.geoip_expose = utils_free("utils.project_info_cleanup", project_info.geoip_expose);
+	project_info.idbadmin_enable = utils_free("utils.project_info_cleanup", project_info.idbadmin_enable);
+	project_info.idbadmin_table = utils_free("utils.project_info_cleanup", project_info.idbadmin_table);
 
 	/* To set to NULLs */
 	project_info_init();
@@ -639,6 +774,18 @@ int is_numeric(char *val)
 	return ok;
 }
 
+int is_double(char *val)
+{
+	int i, ok;
+
+	ok = 1;
+	for (i = 0; i < strlen(val); i++)
+		 if (((val[i] < '0') || (val[i] > '9')) && (val[i] != '.'))
+			ok = 0;
+
+	return ok;
+}
+
 int is_string(char *val)
 {
 	if ((val == NULL) || (strlen(val) == 0))
@@ -693,7 +840,7 @@ int gettype(char *val)
 	if (is_numeric(val))
 		return (atoi(val) == atol(val)) ? TYPE_INT : TYPE_LONG;
 
-	if ((strstr(val, ".") != NULL) || (strstr(val, ",") != NULL))
+	if (is_double(val))
 		return TYPE_DOUBLE;
 
 	return TYPE_STRING;
@@ -1326,6 +1473,19 @@ int valcmp(char *a1, char *a2)
 	return strcmp(a1, a2);
 }
 
+char *get_ip_address(char *ip)
+{
+	if (strncmp(ip, "::ffff:", 7) == 0) {
+		int i;
+
+		/* This is IPv6 mapped IPv4 address */
+		for (i = 0; i < 7; i++)
+			*ip++;
+	}
+
+	return ip;
+}
+
 #ifdef USE_GEOIP
 tGeoIPInfo geoip_get_info(char *geoip_file, char *ip)
 {
@@ -1336,6 +1496,8 @@ tGeoIPInfo geoip_get_info(char *geoip_file, char *ip)
 	int		country_id, i;
 	tGeoIPInfo	GeoIPInfo;
 	int		ipv6 = 0;
+
+	ip = get_ip_address(ip);
 
 	DPRINTF("%s: Querying database for IP address %s information\n", __FUNCTION__, ip);
 
@@ -1596,7 +1758,7 @@ int shared_mem_check(void)
 }
 
 /* Hosting database functions */
-void utils_hosting_add(pid_t pid, struct sockaddr_in client_addr, char *host, char *path, char *browser)
+void utils_hosting_add(pid_t pid, struct sockaddr_storage client_addr, int client_addr_len, char *host, char *path, char *browser)
 {
 	int num;
 
@@ -1610,15 +1772,19 @@ void utils_hosting_add(pid_t pid, struct sockaddr_in client_addr, char *host, ch
 		return;
 	}
 
+	char ip[20] = { 0 };
+	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST);
+
+	snprintf(ip, sizeof(ip), "%s", get_ip_address(ip));
+
 	num = shared_mem->_num_hosting;
 	#ifdef USE_GEOIP
 	char *tmp = project_info_get("geoip_enable");
-	project_info_dump();
 	if (get_boolean(tmp)) {
 		char *fn = project_info_get("geoip_file");
 		if (fn != NULL) {
 			char *exp = project_info_get("geoip_expose");
-			shared_mem->_hosting[num].geoip = geoip_get_info(fn, inet_ntoa(client_addr.sin_addr));
+			shared_mem->_hosting[num].geoip = geoip_get_info(fn, ip);
 			geoip_info_dump(shared_mem->_hosting[num].geoip);
 
 			if (exp != NULL) {
@@ -1697,10 +1863,10 @@ void utils_hosting_add(pid_t pid, struct sockaddr_in client_addr, char *host, ch
 		utils_free("utils.utils_hosting_add.fn", fn);
 	}
 	else
-		strncpy(shared_mem->_hosting[num].geoip.addr, inet_ntoa(client_addr.sin_addr), sizeof(shared_mem->_hosting[num].geoip.addr));
+		strncpy(shared_mem->_hosting[num].geoip.addr, ip, sizeof(shared_mem->_hosting[num].geoip.addr));
 	utils_free("utils.utils_hosting_add.tmp", tmp);
 	#else
-	strncpy(shared_mem->_hosting[num].addr, inet_ntoa(client_addr.sin_addr), sizeof(shared_mem->_hosting[num].addr));
+	strncpy(shared_mem->_hosting[num].addr, ip, sizeof(shared_mem->_hosting[num].addr));
 	#endif
 	shared_mem->_hosting[num].pid = pid;
 	strncpy(shared_mem->_hosting[num].host, host, sizeof(shared_mem->_hosting[num].host));
@@ -1709,7 +1875,7 @@ void utils_hosting_add(pid_t pid, struct sockaddr_in client_addr, char *host, ch
 	shared_mem->_num_hosting = num + 1;
 
 	DPRINTF("%s: PID #%d added to shared memory with hosting information for %s [#%d]\n",
-		__FUNCTION__, pid, inet_ntoa(client_addr.sin_addr), shared_mem->_num_hosting);
+		__FUNCTION__, pid, ip, shared_mem->_num_hosting);
 }
 
 void utils_hosting_delete(pid_t pid)
@@ -1752,7 +1918,7 @@ void utils_hosting_dump(void)
 	#ifdef USE_GEOIP
 		tGeoIPInfo gip = shared_mem->_hosting[i].geoip;
 
-		dump_printf("Process #%d: PID #%d, IP %s, host %s, path %s, browser is '%s'\n",
+		dump_printf("Process #%d: PID #%d, IP '%s', host '%s', path '%s', browser is '%s'\n",
 			i + 1, shared_mem->_hosting[i].pid, shared_mem->_hosting[i].geoip.addr,
 			shared_mem->_hosting[i].host, shared_mem->_hosting[i].path,
 			shared_mem->_hosting[i].browser);
@@ -1765,7 +1931,7 @@ void utils_hosting_dump(void)
 			dump_printf("\tGeoIP = { country: %s, region: %s, city: %s, postal code: %s, latitude: %f, longitude: %f }\n",
 				gip.country_code, gip.region, gip.city, gip.postal_code, gip.geo_lat, gip.geo_long);
 	#else
-		dump_printf("Process #%d: PID #%d, IP %s, host %s, path %s, browser %s\n",
+		dump_printf("Process #%d: PID #%d, IP '%s', host '%s', path '%s', browser '%s'\n",
 			i + 1, shared_mem->_hosting[i].pid, shared_mem->_hosting[i].addr,
 			shared_mem->_hosting[i].host, shared_mem->_hosting[i].path,
 			shared_mem->_hosting[i].browser);
@@ -1822,6 +1988,9 @@ void utils_pid_delete(pid_t pid)
 		DPRINTF("%s: Cannot get shared memory\n", __FUNCTION__);
 		return;
 	}
+
+	if (shared_mem == NULL)
+		return;
 
 	num = shared_mem->_num_pids;
 	for (i = 0; i < shared_mem->_num_pids; i++)

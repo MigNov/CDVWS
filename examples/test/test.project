@@ -22,6 +22,12 @@ geoip.file = geoip/GeoLiteCity.dat
 #geoip.expose = COUNTRY REGION CITY POSTAL_CODE LONGITUDE LATITUDE
 geoip.expose = COUNTRY CITY LONGITUDE LATITUDE
 
+# Internal database administration
+idbadmin.enable = true
+# If database files are missing then parse all of them whether idbadmin.admintbl exists
+# idbadmin.files = private.idb
+idbadmin.admintbl = idbadmin
+
 # Project settings
 project.name = Test project
 project.administrator.name = Michal Novotny

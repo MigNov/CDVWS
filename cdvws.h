@@ -62,6 +62,7 @@
 #define TYPE_QSCRIPT	TYPE_BASE + 0x04
 #define TYPE_MODULE	TYPE_BASE + 0x08
 #define TYPE_MODAUTH	TYPE_BASE + 0x10
+#define TYPE_COOKIE	TYPE_BASE + 0x20
 
 #include <time.h>
 #include <stdio.h>
@@ -82,11 +83,17 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
+#include <sys/poll.h>
+#include <netdb.h>
 
 /* For shared memory */
 #include <sys/ipc.h>
 #include <sys/shm.h>
+
+/* For IPv4/IPv6 stuff*/
+#define	TCP_IPV4	0x01
+#define	TCP_IPV6	0x02
+#define	TCP_V6ONLY	0x04
 
 #define MAX_PID_REASON  (1 << 7)
 
@@ -132,6 +139,9 @@ geoipv6_t _GeoIP_lookupaddress_v6 (const char *host);
 int __GEOIP_V6_IS_NULL(geoipv6_t v6);
 #endif
 
+struct pollfd *_tcp_sock_fds;
+int _tcp_sock_fds_num;
+
 #ifdef USE_MINCRYPT
 /* We cannot include mincrypt.h because of re-introducing definitions */
 void mincrypt_set_password(char *salt, char *password, int vector_multiplier);
@@ -166,7 +176,7 @@ BIO *gIO;
 int gFd;
 int gHttpHandler;
 
-typedef int (tProcessRequest)(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len);
+typedef int (tProcessRequest)(SSL *ssl, BIO *io, int connected, struct sockaddr_storage client_addr, int client_addr_len, char *buf, int len);
 void script_set_descriptors(BIO *io, int fd, short httpHandler);
 
 SSL_CTX *init_ssl_layer(char *private_key, char *public_key, char *root_key);
@@ -193,6 +203,9 @@ int gFd;
 #define	IDB_TYPE_LONG	0x02
 #define	IDB_TYPE_STR	0x04
 #define	IDB_TYPE_FILE	0x08
+
+#define IDB_TYPE_ALTER_ADD	0x01
+#define IDB_TYPE_ALTER_DROP	0x02
 #endif
 
 typedef struct tTokenizer {
@@ -283,6 +296,8 @@ typedef struct tProjectInformation {
 	char *geoip_enable;
 	char *geoip_file;
 	char *geoip_expose;
+	char *idbadmin_enable;
+	char *idbadmin_table;
 } tProjectInformation;
 
 typedef struct tAttr {
@@ -522,6 +537,9 @@ int idb_table_drop(char *table_name);
 void idb_free_last_select_data(void);
 tTableDataSelect idb_tables_show(void);
 int idb_set_compat_mode(int version);
+int idb_table_exists(char *filename, char *table_name);
+int idb_authorize(char *filename, char *table_name, char *username, char *password);
+int idb_table_alter(char *name, int type, int num_fields, tTableFieldDef *fields);
 
 /* Config stuff */
 int config_initialize(void);
@@ -593,11 +611,13 @@ int utils_pid_exists(pid_t pid);
 char *format_size(unsigned long value);
 unsigned long calculate_shared_memory_allocation(void);
 int utils_pid_num_free(void);
-void utils_hosting_add(pid_t pid, struct sockaddr_in client_addr, char *host, char *path, char *browser);
+void utils_hosting_add(pid_t pid, struct sockaddr_storage client_addr, int client_addr_len, char *host, char *path, char *browser);
 void utils_hosting_delete(pid_t pid);
 void utils_hosting_dump(void);
 int utils_hosting_num_free(void);
 int valcmp(char *a1, char *a2);
+char *generate_hash(char *str, char *salt, int len);
+char *get_ip_address(char *ip);
 
 #ifdef USE_GEOIP
 tGeoIPInfo geoip_get_info(char *geoip_file, char *ip);
@@ -649,11 +669,11 @@ int regex_match(char *expr, char *str);
 char *database_format_query(char *xmlFile, char *table, char *type);
 
 /* Sockets stuff */
-int tcp_listen(int port);
+int tcp_listen(int port, int flags);
 int socket_has_data(int sfd, long maxtime);
 int write_common(BIO *io, int sock, char *data, int len);
-int run_server(int port, char *pk, char *pub, char *root_key);
-int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_in client_addr, char *buf, int len);
+int run_server(int port, char *pk, char *pub, char *root_key, int flags);
+int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_storage client_addr, int client_addr_len, char *buf, int len);
 
 /* MinCrypt wrapper stuff */
 long wrap_mincrypt_get_version(void);

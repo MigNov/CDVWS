@@ -385,7 +385,8 @@ void variable_dump(void)
 			((_vars[i].q_type == TYPE_QPOST) ? "POST Request" :
 			((_vars[i].q_type == TYPE_QGET) ? "GET Request" :
 			((_vars[i].q_type == TYPE_MODULE) ? "MODULE Processing" :
-			((_vars[i].q_type == TYPE_MODAUTH) ? "AUTH MODULE Processing" : "SCRIPT Processing")))));
+			((_vars[i].q_type == TYPE_MODAUTH) ? "AUTH MODULE Processing" :
+			((_vars[i].q_type == TYPE_COOKIE) ? "COOKIE Request" : "SCRIPT Processing"))))));
 		DPRINTF("\tName: %s\n", _vars[i].name ? _vars[i].name : "<null>");
 		DPRINTF("\tAllow overwrite: %d (local %d)\n", variable_get_overwrite(_vars[i].name),
 				 _vars[i].allow_overwrite);

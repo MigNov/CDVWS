@@ -47,7 +47,7 @@ SSL_CTX *init_ssl_layer(char *private_key, char *public_key, char *root_key)
 	return ctx;
 }
 
-int process_request_ssl(SSL *ssl, int s, struct sockaddr_in client_addr, tProcessRequest req)
+int process_request_ssl(SSL *ssl, int s, struct sockaddr_storage client_addr, int cal, tProcessRequest req)
 {
 	char buf[TCP_BUF_SIZE] = { 0 };
 	BIO *io,*ssl_bio;
@@ -112,7 +112,7 @@ int process_request_ssl(SSL *ssl, int s, struct sockaddr_in client_addr, tProces
 		}
 	}
 
-	if ((_tcp_total > 0) && (req(ssl, io, -1, client_addr, _tcp_buf, _tcp_total) == 1)) {
+	if ((_tcp_total > 0) && (req(ssl, io, -1, client_addr, cal, _tcp_buf, _tcp_total) == 1)) {
 		r = SSL_shutdown(ssl);
 		if(!r) {
 			shutdown(s, 1);
@@ -126,9 +126,9 @@ int process_request_ssl(SSL *ssl, int s, struct sockaddr_in client_addr, tProces
 	return 0;
 }
 
-int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest req)
+int process_request_plain(int s, struct sockaddr_storage client_addr, int cal, tProcessRequest req)
 {
-	int len;
+	int len, ret = 0;
 	char buf[TCP_BUF_SIZE] = { 0 };
 
 	DPRINTF("%s: Getting data from fd #%d...\n", __FUNCTION__, s);
@@ -137,13 +137,18 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 		memset(buf, 0, sizeof(buf));
 
 		if (socket_has_data(s, 50000) != 1) {
-			DPRINTF("%s: No more data on fd #%d\n", __FUNCTION__, s);
+			DPRINTF("%s: No more data on fd #%d (%d)\n", __FUNCTION__, s, _tcp_total);
+
+			/* This behavior also disables telnet session */
+			ret = (_tcp_total == 0) ? 1 : 0;
 			break;
 		}
 
 		len = recv(s, buf, sizeof(buf), 0);
 		if (len == 0) {
 			DPRINTF("%s: No data available on fd #%d\n", __FUNCTION__, s);
+			close(s);
+			ret = 1;
 			break;
 		}
 
@@ -153,6 +158,8 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 			buf[len] = 0;
 		if (len == 0) {
 			DPRINTF("%s: No data available on fd #%d\n", __FUNCTION__, s);
+			close(s);
+			ret = 1;
 			break;
 		}
 
@@ -162,17 +169,17 @@ int process_request_plain(int s, struct sockaddr_in client_addr, tProcessRequest
 		}
 	}
 
-	if ((_tcp_total > 0) && (req(NULL, NULL, s, client_addr, _tcp_buf, _tcp_total) == 1)) {
+	if ((_tcp_total > 0) && (req(NULL, NULL, s, client_addr, cal, _tcp_buf, _tcp_total) == 1)) {
 		DPRINTF("%s: Processed %d total bytes\n", __FUNCTION__, _tcp_total);
 		close(s);
 		return 1;
 	}
 
 	DPRINTF("%s: Done\n", __FUNCTION__);
-	return 0;
+	return ret;
 }
 
-int process_request(SSL *ssl, int s, struct sockaddr_in client_addr, tProcessRequest req)
+int process_request(SSL *ssl, int s, struct sockaddr_storage client_addr, int cal, tProcessRequest req)
 {
 	int ret;
 
@@ -183,9 +190,9 @@ int process_request(SSL *ssl, int s, struct sockaddr_in client_addr, tProcessReq
 	_tcp_total = 0;
 
 	if (ssl == NULL)
-		ret = process_request_plain(s, client_addr, req);
+		ret = process_request_plain(s, client_addr, cal, req);
 	else
-		ret = process_request_ssl(ssl, s, client_addr, req);
+		ret = process_request_ssl(ssl, s, client_addr, cal, req);
 
 	DPRINTF("%s: Request return value is %d\n", __FUNCTION__, ret);
 	return ret;
@@ -229,55 +236,69 @@ void tcpsig(int sig)
 		_sockets_done = 1;
 }
 
-int accept_loop(SSL_CTX *ctx, int sock, tProcessRequest req)
+int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 {
-	int s;
-	BIO *sbio;
-	SSL *ssl = NULL;
-	pid_t cpid;
-	struct sockaddr_in client_addr;    
-	socklen_t sin_size;
+        int s;
+        BIO *sbio;
+        SSL *ssl = NULL;
+        pid_t cpid;
+	int n, i;
 
-	_sockets_done = 0;
+        _sockets_done = 0;
 
-	signal(SIGUSR1, tcpsig);
-	DPRINTF("%s: Signal handler set\n", __FUNCTION__);
+        signal(SIGUSR1, tcpsig);
+        DPRINTF("%s: Signal handler set\n", __FUNCTION__);
 
-	while (!_sockets_done) {
-		sin_size = sizeof(struct sockaddr_in);
+        while (!_sockets_done) {
+		n = poll(_tcp_sock_fds, nfds, -1);
+		if (n > 0)
+			for (i = 0; i < nfds; ++i) {
+				if (_tcp_sock_fds[i].revents & POLLIN) {
+					struct sockaddr_storage rem;
+					socklen_t remlen = sizeof (rem);
 
-		if (socket_has_data(sock, 50000)) {
-			if((s = accept(sock, (struct sockaddr *)&client_addr, &sin_size)) < 0)
-				return -EINVAL;
+					s = accept(_tcp_sock_fds[i].fd, (struct sockaddr *) &rem, &remlen);
+					if (s != -1) {
+						char hn[200] = { 0 };
+						if (getnameinfo((struct sockaddr *)&rem, remlen,
+							hn, sizeof(hn), NULL, 0, 0) != 0)
+							strcpy(hn, " - ");
+						char ip[200] = { 0 };
+						(void) getnameinfo ((struct sockaddr *)&rem, remlen,
+							ip, sizeof(ip), NULL, 0,
+							NI_NUMERICHOST);
 
-			if ((cpid = fork()) == 0) {
-				DPRINTF("%s: Accepted new %s connection from %s\n", __FUNCTION__,
-					(ctx == NULL) ? "insecure" : "secure", inet_ntoa(client_addr.sin_addr));
-				if (ctx != NULL) {
-					sbio=BIO_new_socket(s,BIO_NOCLOSE);
-					ssl=SSL_new(ctx);
-					SSL_set_bio(ssl,sbio,sbio);
+						if ((cpid = fork()) == 0) {
+							DPRINTF("%s: Accepted new %s connection from %s [%s]\n", __FUNCTION__,
+								(ctx == NULL) ? "insecure" : "secure", hn, get_ip_address(ip));
+							if (ctx != NULL) {
+								sbio=BIO_new_socket(s,BIO_NOCLOSE);
+								ssl=SSL_new(ctx);
+								SSL_set_bio(ssl,sbio,sbio);
 
-					SSL_accept(ssl);
-				}
+								SSL_accept(ssl);
+							}
 
-				if (process_request(ssl, s, client_addr, req) == 1) {
-					shutdown_common(ssl, s, SHUT_RDWR);
-					close(sock);
-					close(s);
-					return 1;
+							if (process_request(ssl, s, rem, remlen, req) == 1) {
+								shutdown_common(ssl, s, SHUT_RDWR);
+								close(s);
+								return 1;
+							}
+						}
+						else {
+							wait(NULL);
+							close(s);
+						}
+					}
 				}
 			}
-			else {
-				wait(NULL);
-				close(s);
-			}
-		}
 	}
 
-	shutdown_common(ssl, sock, SHUT_RDWR);
-	close(sock);
+
+	for (i = 0; i < nfds; i++) {
+		shutdown_common(ssl, _tcp_sock_fds[i].fd, SHUT_RDWR);
+		close(_tcp_sock_fds[i].fd);
+	}
 
 	return 0;
 }
-

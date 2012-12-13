@@ -64,5 +64,5 @@
 	}
 
 	// Uncomment for debugging purposes to emulate long queries
-	// sleep(5);
+	sleep(5);
 $>

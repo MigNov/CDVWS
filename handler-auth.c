@@ -298,8 +298,6 @@ char *krb5_get_user(char *keytab, char *srv_princ, const char *auth_line) {
 	#ifdef AUTH_MSG_SLEEP
 	DPRINTF("***** To debug this process please run: gdb -p %d *****\n", getpid());
 	sleep(10);
-	#else
-	sleep(1);
 	#endif
 
 	len = strlen(auth_line);

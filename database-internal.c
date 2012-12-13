@@ -89,8 +89,15 @@ char *_idb_get_input_value(char *data, int *otype)
 		type = 0;
 
 	t = tokenize(data, "'");
+
 	for (i = 0; i < t.numTokens; i++)
 		out = strdup(t.tokens[i]);
+
+	if (t.numTokens == 0) {
+		/* Empty string should suffice */
+		out = strdup("");
+		type = IDB_TYPE_STR;
+	}
 
 	if (otype != NULL)
 		*otype = type;
@@ -272,7 +279,37 @@ int idb_query(char *query)
 			cm = t2.tokens[0];
 		}
 		ret = idb_table_create(trim(name), t.numTokens, fd, cm);
+		fd = utils_free("idb.idb_query.fd", fd);
 		free_tokens(t2);
+		free_tokens(t);
+	}
+	else
+	if (strncmp(query, "ALTER TABLE", 11) == 0) {
+		// ALTER TABLE table ADD field type
+		// ALTER TABLE table DROP field
+		t = tokenize(query, " ");
+		if (t.numTokens >= 5) {
+			char *name = NULL;
+			tTableFieldDef *fd = NULL;
+
+			fd = utils_alloc( "idb.idb_query.alter_table.fd", sizeof(tTableFieldDef) );
+			memset(fd, 0, sizeof(tTableFieldDef));
+
+			name = strdup(t.tokens[2]);
+			fd[0].name = strdup(t.tokens[4]);
+
+			if ((strcmp(t.tokens[3], "ADD") == 0) && (t.numTokens >= 6)) {
+				fd[0].type = idb_type_id(trim(t.tokens[5]));
+
+				ret = idb_table_alter(name, IDB_TYPE_ALTER_ADD, 1, fd);
+			}
+			else
+			if (strcmp(t.tokens[3], "DROP") == 0) {
+				ret = idb_table_alter(name, IDB_TYPE_ALTER_DROP, 1, fd);
+			}
+
+			name = utils_free("idb.idb_query.alter_table.name", name);
+		}
 		free_tokens(t);
 	}
 	else
@@ -433,6 +470,7 @@ int idb_query(char *query)
 				tmp[len] = 0;
 
 				query = strdup(tmp);
+				DPRINTF("%s: Query string is '%s'\n", __FUNCTION__, query);
 			}
 
 			t = tokenize(query + 12 + strlen(name), ",");
@@ -711,6 +749,64 @@ void idb_free_last_select_data(void)
 	idb_results_free( &_last_tds );
 }
 
+int idb_table_exists(char *filename, char *table_name)
+{
+	int i, ret;
+
+	ret = idb_load(filename);
+	if (ret != 0) {
+		ret = -1;
+		goto cleanup;
+	}
+
+	ret = 0;
+	for (i = 0; i < idb_tables_num; i++) {
+		if (strcmp(idb_tables[i].name, table_name) == 0) {
+			ret = 1;
+			break;
+		}
+        }
+
+	idb_free();
+
+cleanup:
+	return ret;
+}
+
+int idb_authorize(char *filename, char *table_name, char *username, char *password)
+{
+	int ret;
+	char **sel_fields = NULL;
+	tTableDataSelect tds = tdsNone;
+	tTableDataInput *where_fields = NULL;
+
+	ret = idb_load(filename);
+	if (ret != 0) {
+		ret = -1;
+		goto cleanup;
+	}
+
+	ret = 0;
+
+	sel_fields = (char **)utils_alloc( "idb.idb_authorize.sel_fields", sizeof(char *));
+	sel_fields[0] = "username";
+
+	where_fields = (tTableDataInput *)utils_alloc( "idb.idb_authorize.where_fields", 2 * sizeof(tTableDataInput) );
+	where_fields[0].name = "username";
+	where_fields[0].sValue = username;
+	where_fields[1].name = "password";
+	where_fields[1].sValue = password;
+
+	tds = idb_table_select(table_name, 1, sel_fields, 2, where_fields);
+	ret = (tds.num_rows > 0);
+	idb_results_free(&tds);
+	sel_fields = utils_free("idb.idb_authorize.sel_fields", sel_fields);
+	where_fields = utils_free("idb.idb_authorize.where_fields", where_fields);
+	idb_free();
+cleanup:
+	return ret;
+}
+
 void idb_free(void)
 {
 	struct timespec ts;
@@ -908,6 +1004,40 @@ long _idb_table_field_add(long idTable, char *name, int type)
 		_idb_get_type(type), _idb_get_table_name(idTable));
 
 	return id;
+}
+
+int _idb_table_field_drop(long idTable, char *name)
+{
+	long i, id = -1;
+	tTableFieldDef field;
+
+	for (i = 0; i < idb_fields_num; i++) {
+		if ((idb_fields[i].idTable == idTable)
+			&& (strcmp(idb_fields[i].name, name) == 0))
+			id = idb_fields[i].id;
+	}
+
+	if (id == -1) {
+		DPRINTF("%s: Cannot find field '%s' in table\n", __FUNCTION__, name);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < idb_tabdata_num; i++) {
+		if (idb_tabdata[i].idField == id) {
+			utils_free("idb._idb_table_field_drop.sValue", idb_tabdata[i].sValue);
+			idb_tabdata[idb_tabdata_num - 1] = idb_tabdata[i];
+			idb_tabdata_num--;
+		}
+	}
+
+	field = idb_fields[idb_fields_num];
+	idb_fields[id] = field;
+
+	utils_free("idb._idb_table_field_drop.name", idb_fields[idb_fields_num].name);
+	idb_fields = realloc(idb_fields, (idb_fields_num - 1) * sizeof(tTableFieldDef));
+	idb_fields_num--;
+
+	return 0;
 }
 
 int _idb_get_type_id_from_field(long idField)
@@ -1250,6 +1380,58 @@ int idb_table_create(char *name, int num_fields, tTableFieldDef *fields, char *c
 
 	DPRINTF("%s: Table '%s' with %d fields added successfully\n", __FUNCTION__, name, num_fields);
 	return 0;
+}
+
+int idb_table_alter(char *name, int type, int num_fields, tTableFieldDef *fields)
+{
+	int ret;
+	long i;
+	long idTable = -1;
+
+	if ((type != IDB_TYPE_ALTER_ADD) && (type != IDB_TYPE_ALTER_DROP)) {
+		DPRINTF("%s: Invalid type (0x%02x)\n", __FUNCTION__, type);
+		return -EINVAL;
+	}
+
+	if (num_fields <= 0) {
+		DPRINTF("%s: Num fields is 0 or less, cannot continue\n", __FUNCTION__);
+		return -EINVAL;
+	}
+
+	idTable = _idb_table_id(name);
+	if (idTable < 0) {
+		DPRINTF("%s: Table %s doesn't exist\n", __FUNCTION__, name);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < num_fields; i++) {
+		if (type == IDB_TYPE_ALTER_ADD) {
+			tTableDataInput *td = NULL;
+
+			_idb_table_field_add(idTable, fields[i].name, fields[i].type);
+			td = (tTableDataInput *)utils_alloc( "idb.idb_table_alter.td", sizeof(tTableDataInput));
+			td[0].name = fields[i].name;
+			switch (fields[i].type) {
+				case IDB_TYPE_STR: td[0].sValue = "";
+						break;
+				case IDB_TYPE_INT: td[0].iValue = 0;
+						break;
+				case IDB_TYPE_LONG: td[0].lValue = 0;
+						break;
+				case IDB_TYPE_FILE: td[0].sValue = "";
+						break;
+			}
+
+			ret = idb_table_insert(name, 1, td);
+		}
+		else
+		if (type == IDB_TYPE_ALTER_DROP)
+			ret = _idb_table_field_drop(idTable, fields[i].name);
+	}
+
+	_idb_num_queries++;
+
+	return ret;
 }
 
 int idb_table_insert(char *table_name, int num_data, tTableDataInput *td)
@@ -2697,5 +2879,7 @@ int idb_query(char *query) {};
 int idb_set_compat_mode(int version) { return -ENOTSUP; };
 tTableDataSelect idb_get_last_select_data(void) {};
 void idb_free_last_select_data(void) {};
+int idb_table_exists(char *filename, char *table_name) { return -1; }
+int idb_authorize(char *filename, char *table_name, char *username, char *password) { return -1; }
 #endif
 

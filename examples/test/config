@@ -13,7 +13,7 @@ auth.type = mysql
 # For file-backed auth table:
 # auth.table.file = private/users.tab
 #
-# For internal database-backed auth table:
+# For internal database-backed auth table (all iDB databases should be in database subdir):
 # auth.table.file = private.idb
 # auth.table.name = users
 #

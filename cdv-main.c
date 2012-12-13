@@ -191,15 +191,28 @@ int test_idb_queries(void)
 void run_servers(int port, int ssl_port)
 {
 	if ((port > 0) && (fork() == 0))
-		run_server(port, NULL, NULL, NULL);
+		run_server(port, NULL, NULL, NULL, TCP_IPV4 | TCP_IPV6);
 
 	if ((ssl_port > 0) && (fork() == 0))
 		run_server(ssl_port, "certs/server-key.private",
-			"certs/server-key.pub", "certs/rootcert.pem");
+			"certs/server-key.pub", "certs/rootcert.pem", TCP_IPV4 | TCP_IPV6);
 }
 
 void atex(void)
 {
+	int i;
+
+	/* Close all descriptors allocated by this process */
+	DPRINTF("%s: Number of file descriptors is %d (PID #%d)\n",
+		__FUNCTION__, _tcp_sock_fds_num, getpid());
+	for (i = 0; i < _tcp_sock_fds_num; i++) {
+		DPRINTF("%s: Shutting down fd %d\n", __FUNCTION__,
+			_tcp_sock_fds[i].fd);
+
+		shutdown(_tcp_sock_fds[i].fd, SHUT_RDWR);
+		close(_tcp_sock_fds[i].fd);
+	}
+
 	/* Memory should be freed once all instances are done */
 	if (getpid() == parent_pid) {
 		utils_pid_wait_all();
@@ -263,6 +276,37 @@ int main(int argc, char *argv[])
 	first_initialize(0);
 	if ((argc > 1) && (strcmp(argv[1], "--enable-remote-shell-only") == 0))
 		_shell_enabled = 1;
+
+	if ((argc > 1) && (strcmp(argv[1], "--test-generate-hash") == 0)) {
+		int len = 128;
+		char str[] = "this is just a test string";
+		char strs[] = "test";
+		char salt[] = "salt value1";
+		char salt2[] = "salt value2";
+		char salts[] = "test";
+		char saltt[] = "tesu";
+		char *hash = generate_hash(str, salt, len);
+
+		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
+			str, salt, len, hash, (int)strlen(hash));
+		hash = utils_free("main.hash1", hash);
+
+		hash = generate_hash(str, salt2, len);
+		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
+			str, salt2, len, hash, (int)strlen(hash));
+		hash = utils_free("main.hash2", hash);
+
+		hash = generate_hash(strs, salts, len);
+		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
+			strs, salts, len, hash, (int)strlen(hash));
+		hash = utils_free("main.hash3", hash);
+
+		hash = generate_hash(strs, saltt, len);
+		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
+			strs, saltt, len, hash, (int)strlen(hash));
+		hash = utils_free("main.hash4", hash);
+		return 1;
+	}
 
 	if ((argc > 1) && (strcmp(argv[1], "--test-xmlrpc") == 0)) {
 	        printf("Test #1:\n%s\n", xmlrpc_process("<?xml version=\"1.0\"?><methodCall>"
