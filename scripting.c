@@ -112,6 +112,18 @@ int _script_builtin_function(char *var, char *fn, char *args)
 		}
 	}
 	else
+	if (strcmp(fn, "cookie") == 0) {
+		char *val = variable_get_element_as_string(args, "cookie");
+
+		if (val != NULL) {
+			DPRINTF("%s: Processing internal 'cookie' function for arguments: %s\n", __FUNCTION__, args);
+			DPRINTF("%s: Variable %s processed to %s\n", __FUNCTION__, var, val);
+
+			if (var != NULL)
+				variable_add(var, val, TYPE_QSCRIPT, -1, gettype(val));
+		}
+	}
+	else
 	if (strcmp(fn, "sleep") == 0) {
 		int num = atoi(args);
 

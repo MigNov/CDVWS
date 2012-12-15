@@ -1473,15 +1473,25 @@ int valcmp(char *a1, char *a2)
 	return strcmp(a1, a2);
 }
 
-char *get_ip_address(char *ip)
+char *get_ip_address(char *ip, int *outType)
 {
+	int type = TCP_IPV4;
+
 	if (strncmp(ip, "::ffff:", 7) == 0) {
 		int i;
 
 		/* This is IPv6 mapped IPv4 address */
 		for (i = 0; i < 7; i++)
 			*ip++;
+
+		type = TCP_IPV4;
 	}
+	else
+	if (strchr(ip, ':') != NULL)
+		type = TCP_IPV6;
+
+	if (outType != NULL)
+		*outType = type;
 
 	return ip;
 }
@@ -1497,7 +1507,7 @@ tGeoIPInfo geoip_get_info(char *geoip_file, char *ip)
 	tGeoIPInfo	GeoIPInfo;
 	int		ipv6 = 0;
 
-	ip = get_ip_address(ip);
+	ip = get_ip_address(ip, NULL);
 
 	DPRINTF("%s: Querying database for IP address %s information\n", __FUNCTION__, ip);
 
@@ -1758,7 +1768,7 @@ int shared_mem_check(void)
 }
 
 /* Hosting database functions */
-void utils_hosting_add(pid_t pid, struct sockaddr_storage client_addr, int client_addr_len, char *host, char *path, char *browser)
+void utils_hosting_add(pid_t pid, char *ip, char *hostname, char *host, char *path, char *browser)
 {
 	int num;
 
@@ -1772,10 +1782,8 @@ void utils_hosting_add(pid_t pid, struct sockaddr_storage client_addr, int clien
 		return;
 	}
 
-	char ip[20] = { 0 };
-	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST);
-
-	snprintf(ip, sizeof(ip), "%s", get_ip_address(ip));
+	ip = get_ip_address(ip, NULL);
+	DPRINTF("%s: IP address is '%s' [hostname is %s]\n", __FUNCTION__, ip, hostname);
 
 	num = shared_mem->_num_hosting;
 	#ifdef USE_GEOIP
@@ -1795,60 +1803,68 @@ void utils_hosting_add(pid_t pid, struct sockaddr_storage client_addr, int clien
 				for (i = 0; i < t.numTokens; i++) {
 					if (strcmp(t.tokens[i], "COUNTRY") == 0) {
 						if (shared_mem->_hosting[num].geoip.type == -1)
-							variable_add_fl("GEOIP_COUNTRY", "Private or unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+							variable_add_fl("GEOIP_COUNTRY", "Private or unknown", TYPE_MODULE, 0, TYPE_STRING,
+								VARFLAG_READONLY);
 						else
 							variable_add_fl("GEOIP_COUNTRY", shared_mem->_hosting[num].geoip.country_code,
-								TYPE_MODULE, -1, TYPE_STRING, 1);
+								TYPE_MODULE, -1, TYPE_STRING, VARFLAG_READONLY);
 					}
 					else
 					if (strcmp(t.tokens[i], "REGION") == 0) {
 						if ((shared_mem->_hosting[num].geoip.type == -1)
 							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
-							variable_add_fl("GEOIP_REGION", "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+							variable_add_fl("GEOIP_REGION", "Unknown", TYPE_MODULE, 0, TYPE_STRING,
+								VARFLAG_READONLY);
 						else
 							variable_add_fl("GEOIP_REGION", shared_mem->_hosting[num].geoip.region,
-								TYPE_MODULE, -1, TYPE_STRING, 1);
+								TYPE_MODULE, -1, TYPE_STRING, VARFLAG_READONLY);
 					}
 					else
 					if (strcmp(t.tokens[i], "CITY") == 0) {
 						if ((shared_mem->_hosting[num].geoip.type == -1)
 							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
-							variable_add_fl("GEOIP_CITY", "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+							variable_add_fl("GEOIP_CITY", "Unknown", TYPE_MODULE, 0, TYPE_STRING,
+								VARFLAG_READONLY);
 						else
 							variable_add_fl("GEOIP_CITY", shared_mem->_hosting[num].geoip.city,
-								TYPE_MODULE, -1, TYPE_STRING, 1);
+								TYPE_MODULE, -1, TYPE_STRING, VARFLAG_READONLY);
 					}
 					else
 					if (strcmp(t.tokens[i], "POSTAL_CODE") == 0) {
 						if ((shared_mem->_hosting[num].geoip.type == -1)
 							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
-							variable_add_fl("GEOIP_POSTAL_CODE", "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+							variable_add_fl("GEOIP_POSTAL_CODE", "Unknown", TYPE_MODULE, 0, TYPE_STRING,
+								VARFLAG_READONLY);
 						else
 							variable_add_fl("GEOIP_POSTAL_CODE",  shared_mem->_hosting[num].geoip.postal_code,
-								TYPE_MODULE, -1, TYPE_STRING, 1);
+								TYPE_MODULE, -1, TYPE_STRING, VARFLAG_READONLY);
 					}
 					else
 					if (strcmp(t.tokens[i], "LONGITUDE") == 0) {
 						if ((shared_mem->_hosting[num].geoip.type == -1)
 							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
-							variable_add_fl("GEOIP_LONGITUDE",  "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+							variable_add_fl("GEOIP_LONGITUDE",  "Unknown", TYPE_MODULE, 0, TYPE_STRING,
+								VARFLAG_READONLY);
 						else {
 							char tmp[16] = { 0 };
 							snprintf(tmp, sizeof(tmp), "%f", shared_mem->_hosting[num].geoip.geo_long);
 
-							variable_add_fl("GEOIP_LONGITUDE", tmp,	TYPE_MODULE, -1, TYPE_DOUBLE, 1);
+							variable_add_fl("GEOIP_LONGITUDE", tmp,	TYPE_MODULE, -1, TYPE_DOUBLE,
+								VARFLAG_READONLY);
 						}
 					}
 					else
 					if (strcmp(t.tokens[i], "LATITUDE") == 0) {
 						if ((shared_mem->_hosting[num].geoip.type == -1)
 							|| (shared_mem->_hosting[num].geoip.type != GEOIP_CITY_EDITION_REV1))
-							variable_add_fl("GEOIP_LATITUDE",  "Unknown", TYPE_MODULE, 0, TYPE_STRING, 1);
+							variable_add_fl("GEOIP_LATITUDE",  "Unknown", TYPE_MODULE, 0, TYPE_STRING,
+								VARFLAG_READONLY);
 						else {
 							char tmp[16] = { 0 };
 							snprintf(tmp, sizeof(tmp), "%f", shared_mem->_hosting[num].geoip.geo_lat);
 
-							variable_add_fl("GEOIP_LATITUDE", tmp, TYPE_MODULE, -1, TYPE_DOUBLE, 1);
+							variable_add_fl("GEOIP_LATITUDE", tmp, TYPE_MODULE, -1, TYPE_DOUBLE,
+								VARFLAG_READONLY);
 					}
 					}
 					else

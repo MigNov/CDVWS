@@ -236,7 +236,7 @@ int variable_set(char *name, char *value, int q_type, int idParent, int type)
 	return 0;
 }
 
-int variable_add_fl(char *name, char *value, int q_type, int idParent, int type, int readonly)
+int variable_add_fl(char *name, char *value, int q_type, int idParent, int type, int flags)
 {
 	if (value == NULL)
 		return -1;
@@ -261,7 +261,7 @@ int variable_add_fl(char *name, char *value, int q_type, int idParent, int type,
 	if (_vars == NULL)
 		return -ENOMEM;
 
-	DPRINTF("%s: Adding variable %s with value %s (%d); type is %d\n", __FUNCTION__, name, value, idParent, type);
+	DPRINTF("%s: Adding variable %s with value \"%s\" (%d); type is %d\n", __FUNCTION__, name, value, idParent, type);
 
 	_vars[_vars_num].id = _vars_num;
 	_vars[_vars_num].iValue = 0;
@@ -272,7 +272,7 @@ int variable_add_fl(char *name, char *value, int q_type, int idParent, int type,
 	_vars[_vars_num].deleted = 0;
 	_vars[_vars_num].fixed_type = 0;
 	_vars[_vars_num].allow_overwrite = -1;
-	_vars[_vars_num].readonly = readonly;
+	_vars[_vars_num].readonly = (flags & VARFLAG_READONLY) ? 1 : 0;
 	if (name == NULL)
 		_vars[_vars_num].name = NULL;
 	else
@@ -430,6 +430,7 @@ int variable_lookup_name_idx(char *name, char *type, int idParent)
 					|| ((_vars[i].q_type == TYPE_BASE) && (strcasecmp(type, "base") == 0))
 					|| ((_vars[i].q_type == TYPE_QPOST) && (strcasecmp(type, "post") == 0)))
 					|| ((_vars[i].q_type == TYPE_QGET) && (strcasecmp(type, "get") == 0))
+					|| ((_vars[i].q_type == TYPE_COOKIE) && (strcasecmp(type, "cookie") == 0))
 					|| ((_vars[i].q_type == TYPE_MODULE) && (strcasecmp(type, "module") == 0))
 					|| ((_vars[i].q_type == TYPE_MODAUTH) && (strcasecmp(type, "auth") == 0))
 					)

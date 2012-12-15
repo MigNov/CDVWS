@@ -270,7 +270,7 @@ int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 
 						if ((cpid = fork()) == 0) {
 							DPRINTF("%s: Accepted new %s connection from %s [%s]\n", __FUNCTION__,
-								(ctx == NULL) ? "insecure" : "secure", hn, get_ip_address(ip));
+								(ctx == NULL) ? "insecure" : "secure", hn, get_ip_address(ip, NULL));
 							if (ctx != NULL) {
 								sbio=BIO_new_socket(s,BIO_NOCLOSE);
 								ssl=SSL_new(ctx);

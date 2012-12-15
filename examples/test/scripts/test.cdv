@@ -7,9 +7,15 @@
 		enable_perf(true);
 	}
 
+	if (REMOTE_IP_TYPE == 'IPv6') {
+		print("<b>Wow! IPv6? Really? I hope it's native and not tunneled!</b><br />\n");
+	}
+
 	/* TODO: Fix when there are parenthesis in the string */
-	printf("You are connected from IP address %s\n", REMOTE_IP);
+	printf("You are connected from IP address %s [type is %s]\n", REMOTE_IP, REMOTE_IP_TYPE);
 	printf("Location is %s, %s\n", GEOIP_CITY, GEOIP_COUNTRY);
+
+	/* Add API to dump all server variables */
 
 	if (GEOIP_COUNTRY == 'CZ') {
 		printf("Ok, we're in the Czech Republic!\n");

@@ -64,6 +64,9 @@
 #define TYPE_MODAUTH	TYPE_BASE + 0x10
 #define TYPE_COOKIE	TYPE_BASE + 0x20
 
+#define VARFLAG_BASE		0x00
+#define VARFLAG_READONLY	VARFLAG_BASE + 0x01
+
 #include <time.h>
 #include <stdio.h>
 #include <dlfcn.h>
@@ -489,7 +492,7 @@ char *gHost;
 char *myRealm;
 
 /* Variable manipulation stuff */
-int variable_add_fl(char *name, char *value, int q_type, int idParent, int type, int readonly);
+int variable_add_fl(char *name, char *value, int q_type, int idParent, int type, int flags);
 int variable_add(char *name, char *value, int q_type, int idParent, int type);
 int variable_lookup_name_idx(char *name, char *type, int idParent);
 void variable_dump(void);
@@ -611,13 +614,13 @@ int utils_pid_exists(pid_t pid);
 char *format_size(unsigned long value);
 unsigned long calculate_shared_memory_allocation(void);
 int utils_pid_num_free(void);
-void utils_hosting_add(pid_t pid, struct sockaddr_storage client_addr, int client_addr_len, char *host, char *path, char *browser);
+void utils_hosting_add(pid_t pid, char *ip, char *hostname, char *host, char *path, char *browser);
 void utils_hosting_delete(pid_t pid);
 void utils_hosting_dump(void);
 int utils_hosting_num_free(void);
 int valcmp(char *a1, char *a2);
 char *generate_hash(char *str, char *salt, int len);
-char *get_ip_address(char *ip);
+char *get_ip_address(char *ip, int *outType);
 
 #ifdef USE_GEOIP
 tGeoIPInfo geoip_get_info(char *geoip_file, char *ip);

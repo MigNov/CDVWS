@@ -239,9 +239,9 @@ void http_parse_data(char *data, int tp)
 			name[ strlen(name) - 2 ] = 0;
 
 			if ((idParent = variable_lookup_name_idx(name, (tp == TYPE_QPOST) ? "post" : "get", idParent)) == -1)
-				idParent = variable_add_fl(name, NULL, tp, -1, TYPE_ARRAY, 1);
+				idParent = variable_add_fl(name, NULL, tp, -1, TYPE_ARRAY, VARFLAG_READONLY);
 
-			variable_add_fl(NULL, value, tp, idParent, gettype(value), 1);
+			variable_add_fl(NULL, value, tp, idParent, gettype(value), VARFLAG_READONLY);
 		}
 		else
 		if (strstr(name, "[") != NULL) {
@@ -252,12 +252,12 @@ void http_parse_data(char *data, int tp)
 			name[strlen(name) - strlen(subname) - 1] = 0;
 
 			if ((idParent = variable_lookup_name_idx(name, (tp == TYPE_QPOST) ? "post" : "get", idParent)) == -1)
-				idParent = variable_add_fl(name, NULL, tp, -1, TYPE_STRUCT, 1);
+				idParent = variable_add_fl(name, NULL, tp, -1, TYPE_STRUCT, VARFLAG_READONLY);
 
-			variable_add_fl(subname, value, tp, idParent, gettype(value), 1);
+			variable_add_fl(subname, value, tp, idParent, gettype(value), VARFLAG_READONLY);
 		}
 		else
-			variable_add_fl(name, value, tp, -1, gettype(value), 1);
+			variable_add_fl(name, value, tp, -1, gettype(value), VARFLAG_READONLY);
 
 		name = utils_free("http.http_parse_data.name", name);
 		value = utils_free("http.http_parse_data.value", value);
@@ -285,7 +285,7 @@ void http_parse_cookies(char *cookies)
 			name = trim(t2.tokens[0]);
 			value = trim(t2.tokens[1]);
 
-			variable_add_fl(name, value, TYPE_COOKIE, -1, gettype(value), 1);
+			variable_add_fl(name, value, TYPE_COOKIE, -1, gettype(value), VARFLAG_READONLY);
 
 			name = utils_free("handler-http.http_parse_cookies.name", name);
 			value = utils_free("handler-http.http_parse_cookies.value", value);
@@ -581,20 +581,26 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 	}
 	tmp = utils_free("handler-http.process_request_common.tmp", tmp);
 
+	int ipver;
+	char ip[20] = { 0 };
+	char hostname[256] = { 0 };
+	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST);
+	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, hostname, sizeof(hostname), NULL, 0, 0);
+
 	char tmph[1024] = { 0 };
 	snprintf(tmph, sizeof(tmph), "Hosting:%s", host);
 	utils_pid_add( getpid(), tmph );
 
-	utils_hosting_add( getpid(), client_addr, client_addr_len, host, path, ua );
+	utils_hosting_add( getpid(), ip, hostname, host, path, ua );
 
-	char ip[20] = { 0 };
-	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST);
-
-	variable_add_fl("REMOTE_IP", get_ip_address(ip), TYPE_BASE, -1, TYPE_STRING, 1);
-	variable_add_fl("HOST", host, TYPE_BASE, -1, TYPE_STRING, 1);
-	variable_add_fl("PATH", path, TYPE_BASE, -1, TYPE_STRING, 1);
-	variable_add_fl("METHOD", method, TYPE_BASE, -1, TYPE_STRING, 1);
-	variable_add_fl("USER_AGENT", ua, TYPE_BASE, -1, TYPE_STRING, 1);
+	variable_add_fl("REMOTE_IP", get_ip_address(ip, &ipver), TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
+	variable_add_fl("REMOTE_HOST", hostname, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
+	variable_add_fl("REMOTE_IP_TYPE", (ipver == TCP_IPV4) ? "IPv4" : (ipver == TCP_IPV6 ? "IPv6" : "Unknown"),
+			TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
+	variable_add_fl("HOST", host, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
+	variable_add_fl("PATH", path, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
+	variable_add_fl("METHOD", method, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
+	variable_add_fl("USER_AGENT", ua, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
 
 	/* For the future CDV WebServer should support limiting the number of clients */
 	DPRINTF("Number of clients for host: %d\n", utils_pid_get_host_clients(host));
@@ -664,7 +670,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 			else {
 				DPRINTF("%s: User is %s. Setting USERNAME variable\n", __FUNCTION__, c);
 
-				variable_add_fl("USERNAME", c, TYPE_MODAUTH, -1, TYPE_STRING, 1);
+				variable_add_fl("USERNAME", c, TYPE_MODAUTH, -1, TYPE_STRING, VARFLAG_READONLY);
 			}
 		}
 	}
