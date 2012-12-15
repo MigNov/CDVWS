@@ -1470,6 +1470,7 @@ int valcmp(char *a1, char *a2)
 			a2 = trim(a2);
 	}
 
+	DPRINTF("%s: string1 = '%s', string2 = '%s'\n", __FUNCTION__, a1, a2);
 	return strcmp(a1, a2);
 }
 

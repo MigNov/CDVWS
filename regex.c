@@ -226,12 +226,26 @@ char **regex_get_matches(char *str, int *num_matches)
 	if ((_tregexs_num == 0) || (num_matches == NULL))
 		return NULL;
 
-	matches = (char **)utils_alloc( "regex.regex_get_matches.matches", sizeof(char *) );
+	matches = (char **)utils_alloc( "regex.regex_get_matches.matches", sizeof(char **) );
 	for (i = 0; i < _tregexs_num; i++) {
 		if (_regex_match(_tregexs[i].expr, str, matches, &matchcnt)) {
 			*num_matches = matchcnt;
 			return matches;
 		}
+	}
+
+	return NULL;
+}
+
+char **regex_get_matches_ex(char *regex, char *str, int *num_matches)
+{
+	int matchcnt;
+	char **matches = NULL;
+
+	matches = (char **)utils_alloc( "regex.regex_get_matches_ex.matches", sizeof(char **) );
+	if (_regex_match(regex, str, matches, &matchcnt)) {
+		*num_matches = matchcnt;
+		return matches;
 	}
 
 	return NULL;
@@ -301,4 +315,5 @@ void regex_dump_matches(char **elements, int num_elems) { };
 void regex_free_matches(char **elements, int num_elems) { };
 char *regex_format_new_string(char *str) { return NULL; };
 int regex_match(char *expr, char *str) { return -1; }
+char **regex_get_matches_ex(char *regex, char *str, int *num_matches) { return NULL; }
 #endif

@@ -417,6 +417,65 @@ void variable_dump(void)
 	}
 }
 
+void desc_variable_dump(BIO *io, int connected, char *source)
+{
+	int i;
+
+	if ((source != NULL) && (strlen(source) > 0) && (source[0] == '"')) {
+		*source++;
+
+		source[ strlen(source) - 1] = 0;
+	}
+
+	desc_printf(io, connected, "\n<br /><i><b>Variable dump:</b><br />\n");
+	for (i = 0; i < _vars_num; i++) {
+		if ((source == NULL) || ((((_vars[i].q_type == TYPE_BASE)
+			&& ((strcasecmp(source, "core") == 0) || (strcasecmp(source, "base") == 0)))
+			|| ((_vars[i].q_type == TYPE_QPOST) && (strcasecmp(source, "post") == 0))
+			|| ((_vars[i].q_type == TYPE_QGET) && (strcasecmp(source, "get") == 0))
+			|| ((_vars[i].q_type == TYPE_MODULE) && (strcasecmp(source, "module") == 0))
+			|| ((_vars[i].q_type == TYPE_MODAUTH) && (strcasecmp(source, "modauth") == 0))
+			|| ((_vars[i].q_type == TYPE_COOKIE) && (strcasecmp(source, "cookie") == 0))
+			|| (strcasecmp(source, "all") == 0)
+		)) && (_vars[i].name != NULL)) {
+				desc_printf(io, connected, "%s ", _vars[i].name);
+
+				if (strcasecmp(source, "all") == 0)
+					desc_printf(io, connected, "[%s] ",
+						(_vars[i].q_type == TYPE_BASE) ? "CORE" :
+						((_vars[i].q_type == TYPE_QPOST) ? "POST" :
+						((_vars[i].q_type == TYPE_QGET) ? "GET" :
+						((_vars[i].q_type == TYPE_MODULE) ? "MODULE" :
+						((_vars[i].q_type == TYPE_MODAUTH) ? "AUTH MODULE" :
+						((_vars[i].q_type == TYPE_COOKIE) ? "COOKIE" : "SCRIPT"))))));
+
+				desc_printf(io, connected, " = ");
+
+				if (_vars[i].type == TYPE_INT)
+					desc_printf(io, connected, "(int) %d", _vars[i].iValue);
+				else
+				if (_vars[i].type == TYPE_LONG)
+					desc_printf(io, connected, "(long) %ld", _vars[i].lValue);
+				else
+				if (_vars[i].type == TYPE_STRING) {
+					if (_vars[i].sValue == NULL)
+						desc_printf(io, connected, "(string) &lt;null&gt;");
+					else
+						desc_printf(io, connected, "(string) \"%s\"", _vars[i].sValue);
+				}
+				else
+				if (_vars[i].type == TYPE_DOUBLE)
+					desc_printf(io, connected, "(double) %f", _vars[i].dValue);
+				else
+					desc_printf(io, connected, "&lt;unset&gt;");
+
+				desc_printf(io, connected, "\n");
+		}
+	}
+
+	desc_printf(io, connected, "</i>");
+}
+
 int variable_lookup_name_idx(char *name, char *type, int idParent)
 {
 	int i;

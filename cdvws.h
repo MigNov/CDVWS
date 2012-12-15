@@ -508,6 +508,7 @@ int variable_get_idx(char *el, char *type);
 int variable_set_fixed_type(char *name, char *type);
 int variable_get_fixed_type(char *name);
 int variable_create(char *name, char *type);
+void desc_variable_dump(BIO *io, int connected, char *source);
 
 /* Scripts */
 int run_script(char *filename);

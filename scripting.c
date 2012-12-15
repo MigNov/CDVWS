@@ -100,6 +100,10 @@ int _script_builtin_function(char *var, char *fn, char *args)
 		}
 	}
 	else
+	if (strcmp(fn, "dumpvars") == NULL) {
+		desc_variable_dump(gIO, gFd, args);
+	}
+	else
 	if (strcmp(fn, "post") == 0) {
 		char *val = variable_get_element_as_string(args, "post");
 
@@ -317,6 +321,31 @@ cleanup:
 	return ret;
 }
 
+int is_assignment(char *buf)
+{
+	int ret;
+	char *tmp = NULL;
+	tTokenizer t;
+
+	t = tokenize(buf, "=");
+	if (t.numTokens == 1) {
+		ret = 0;
+		goto end;
+	}
+
+	tmp = trim(t.tokens[0]);
+
+	if (strchr(tmp, '(') != NULL) {
+		ret = 0;
+		goto end;
+	}
+
+	ret = 1;
+end:
+	free_tokens(t);
+	return ret;
+}
+
 int script_process_line(char *buf)
 {
 	int ret = -ENOTSUP;
@@ -463,7 +492,7 @@ int script_process_line(char *buf)
 	}
 	else
 	/* Assignment */
-	if (strstr(buf, "=") != NULL) {
+	if (is_assignment(buf)) {
 		tTokenizer t;
 
 		t = tokenize(buf, "=");
@@ -498,8 +527,21 @@ int script_process_line(char *buf)
 				t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] = 0;
 				fn = strdup(t2.tokens[0]);
 
-				if (t2.numTokens > 1)
-					args = strdup(t2.tokens[1]);
+				/* We need to make sure parenthesis won't break script line */
+				if (t2.numTokens > 1) {
+					int i;
+					char argstmp[8192] = { 0 };
+
+					for (i = 1; i < t2.numTokens; i++) {
+						strcat(argstmp, t2.tokens[i]);
+
+						if (i < t2.numTokens - 1)
+							strcat(argstmp, "(");
+					}
+
+					args = strdup(argstmp);
+				}
+
 				if (args != NULL) {
 					char args2[1024] = { 0 };
 
@@ -541,8 +583,20 @@ int script_process_line(char *buf)
 		t2.tokens[t2.numTokens - 1][strlen(t2.tokens[t2.numTokens - 1]) - 1] = 0;
 		fn = strdup(t2.tokens[0]);
 
-		if (t2.numTokens > 1)
-			args = strdup(t2.tokens[1]);
+		/* We need to make sure parenthesis won't break script line */
+		if (t2.numTokens > 1) {
+			int i;
+			char argstmp[8192] = { 0 };
+
+			for (i = 1; i < t2.numTokens; i++) {
+				strcat(argstmp, t2.tokens[i]);
+
+				if (i < t2.numTokens - 1)
+					strcat(argstmp, "(");
+			}
+
+			args = strdup(argstmp);
+		}
 
 		if (args != NULL) {
 			if (args[strlen(args) - 1] == ')')
