@@ -583,7 +583,6 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 
 	int ipver;
 	char ip[20] = { 0 };
-	char server_ip[20] = { 0 };
 	char hostname[256] = { 0 };
 	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST);
 	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, hostname, sizeof(hostname), NULL, 0, 0);
@@ -602,6 +601,9 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 	variable_add_fl("PATH", path, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
 	variable_add_fl("METHOD", method, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
 	variable_add_fl("USER_AGENT", ua, TYPE_BASE, -1, TYPE_STRING, VARFLAG_READONLY);
+
+	snprintf(tmph, sizeof(tmph), "%ld", (long)time(NULL));
+	variable_add_fl("SERVER_TIME", tmph, TYPE_BASE, -1, TYPE_LONG, VARFLAG_READONLY);
 
 	/* For the future CDV WebServer should support limiting the number of clients */
 	DPRINTF("Number of clients for host: %d\n", utils_pid_get_host_clients(host));

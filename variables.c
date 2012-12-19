@@ -443,7 +443,9 @@ void desc_variable_dump(BIO *io, int connected, char *source)
 		}
 	}
 
-	desc_printf(io, connected, "\n<br /><pre>\n");
+	if (gHttpHandler == 1)
+		desc_printf(io, connected, "\n<pre>\n");
+
 	for (i = 0; i < _vars_num; i++) {
 		if ((source == NULL) || ((((_vars[i].q_type == TYPE_BASE)
 			&& ((strcasecmp(source, "core") == 0) || (strcasecmp(source, "base") == 0)))
@@ -498,7 +500,8 @@ void desc_variable_dump(BIO *io, int connected, char *source)
 		}
 	}
 
-	desc_printf(io, connected, "</pre>\n");
+	if (gHttpHandler == 1)
+		desc_printf(io, connected, "</pre>\n");
 }
 
 int variable_lookup_name_idx(char *name, char *type, int idParent)
