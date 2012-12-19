@@ -25,9 +25,9 @@ int tcp_listen(int port, int flags)
 
 	memset (&hints, 0, sizeof (hints));
 	if ((flags & TCP_IPV4) && (flags & TCP_IPV6)) {
-		hints.ai_family = PF_UNSPEC;
-		DPRINTF("%s: Address family is unspecified\n",
+		DPRINTF("%s: Cannot define both IPv4 and IPv6 flags.\n",
 			__FUNCTION__);
+		return -EINVAL;
 	}
 	else
 	if ((flags & TCP_IPV4) && (!(flags & TCP_IPV6))) {

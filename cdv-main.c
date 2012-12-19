@@ -191,11 +191,11 @@ int test_idb_queries(void)
 void run_servers(int port, int ssl_port)
 {
 	if ((port > 0) && (fork() == 0))
-		run_server(port, NULL, NULL, NULL, TCP_IPV4 | TCP_IPV6);
+		run_server(port, NULL, NULL, NULL, TCP_IPV6);
 
 	if ((ssl_port > 0) && (fork() == 0))
 		run_server(ssl_port, "certs/server-key.private",
-			"certs/server-key.pub", "certs/rootcert.pem", TCP_IPV4 | TCP_IPV6);
+			"certs/server-key.pub", "certs/rootcert.pem", TCP_IPV6);
 }
 
 void atex(void)

@@ -583,6 +583,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 
 	int ipver;
 	char ip[20] = { 0 };
+	char server_ip[20] = { 0 };
 	char hostname[256] = { 0 };
 	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, ip, sizeof(ip), NULL, 0, NI_NUMERICHOST);
 	(void) getnameinfo ((struct sockaddr *) &client_addr, client_addr_len, hostname, sizeof(hostname), NULL, 0, 0);

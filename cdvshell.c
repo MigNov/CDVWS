@@ -780,7 +780,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 				}
 */
 				if (strcmp(t.tokens[2], "http") == 0) {
-					int flags = TCP_IPV4 | TCP_IPV6;
+					int flags = TCP_IPV6;
 					int port = atoi(t.tokens[3]);
 					if (t.numTokens == 5) {
 						if (strcmp(t.tokens[4], "ipv4") == 0)
@@ -806,7 +806,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 							"<public-key> <root-key>\n");
 					else {
 						int port;
-						int flags = TCP_IPV4 | TCP_IPV6;
+						int flags = TCP_IPV6;
 						char *s1 = NULL;
 						char *s2 = NULL;
 						char *s3 = NULL;
