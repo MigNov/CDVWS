@@ -2,6 +2,7 @@
 #define CDVWS_H
 
 #define DEBUG_ALL
+#define REQUIRE_ROOT
 
 #define VERSION		"0.0.1"
 

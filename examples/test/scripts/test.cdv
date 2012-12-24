@@ -68,7 +68,7 @@
 	}
 
 	// Uncomment for debugging purposes to emulate long queries
-	sleep(5);
+	sleep(15);
 
 	/* API to dump server/script variables */
 	dumpvars("all");

@@ -252,10 +252,18 @@ int main(int argc, char *argv[])
 	int i = 1;
 	unsigned long shmsize;
 
+	show_info_banner();
+
+	#ifdef REQUIRE_ROOT
+	if (getuid() != 0) {
+		fprintf(stderr, "Error: Root privileges are required!\n");
+		return 1;
+	}
+	#endif
+
 	atexit( atex );
 
 	test_alloc();
-	show_info_banner();
 
 	parent_pid = getpid();
 

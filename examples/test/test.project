@@ -1,6 +1,6 @@
 # Hosting options
-host.http = example.com
-host.secure = example.com
+host.http = example.com:2305
+host.secure = example.com:2306
 host.certificate.dir = certs
 host.certificate.root = rootcert.pem
 host.certificate.private = server-key.private

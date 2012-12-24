@@ -232,24 +232,31 @@ void shutdown_common(SSL *ssl, int s, int reason)
 
 void tcpsig(int sig)
 {
+	/* Let SIGUSR2 signal wait() not to leave zombies */
 	if (sig == SIGUSR1)
 		_sockets_done = 1;
+	if (sig == SIGUSR2)
+		wait(NULL);
 }
 
 int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 {
-        int s;
-        BIO *sbio;
-        SSL *ssl = NULL;
-        pid_t cpid;
-	int n, i;
+	int s;
+	BIO *sbio;
+	SSL *ssl = NULL;
+	pid_t cpid;
+	int n, i, ret;
+	pid_t ctrl_pid;
 
-        _sockets_done = 0;
+	_sockets_done = 0;
 
-        signal(SIGUSR1, tcpsig);
-        DPRINTF("%s: Signal handler set\n", __FUNCTION__);
+	signal(SIGUSR1, tcpsig);
+	signal(SIGUSR2, tcpsig);
+	DPRINTF("%s: Signal handler set\n", __FUNCTION__);
 
-        while (!_sockets_done) {
+	ctrl_pid = getpid();
+
+	while (!_sockets_done) {
 		n = poll(_tcp_sock_fds, nfds, -1);
 		if (n > 0)
 			for (i = 0; i < nfds; ++i) {
@@ -275,30 +282,33 @@ int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 								sbio=BIO_new_socket(s,BIO_NOCLOSE);
 								ssl=SSL_new(ctx);
 								SSL_set_bio(ssl,sbio,sbio);
-
 								SSL_accept(ssl);
 							}
 
 							if (process_request(ssl, s, rem, remlen, req) == 1) {
 								shutdown_common(ssl, s, SHUT_RDWR);
 								close(s);
-								return 1;
+								kill(ctrl_pid, SIGUSR2);
+								ret = 1;
+								goto cleanup;
 							}
+
+							kill(ctrl_pid, SIGUSR2);
 						}
-						else {
-							wait(NULL);
+						else
 							close(s);
-						}
 					}
 				}
 			}
 	}
 
-
+	ret = 0;
+cleanup:
 	for (i = 0; i < nfds; i++) {
 		shutdown_common(ssl, _tcp_sock_fds[i].fd, SHUT_RDWR);
 		close(_tcp_sock_fds[i].fd);
 	}
 
-	return 0;
+	return ret;
 }
+
