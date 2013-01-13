@@ -4,3 +4,4 @@
     valgrind -v --show-reachable=yes --leak-check=full $BINARY
 - Implement rest of the code
 - Implement XMLRPC, possibly also JSONRPC due to specs
+- Kerberos 5 - allow user to disable HTTP Basic fallback (option in config)
