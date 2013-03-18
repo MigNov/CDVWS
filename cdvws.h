@@ -68,6 +68,7 @@
 #define VARFLAG_BASE		0x00
 #define VARFLAG_READONLY	VARFLAG_BASE + 0x01
 
+#include <pthread.h>
 #include <time.h>
 #include <stdio.h>
 #include <dlfcn.h>
@@ -195,6 +196,20 @@ void script_set_descriptors(void *io, int fd, short httpHandler);
 void *gIO;
 int gFd;
 #endif
+
+/* Timer/looper functionality */
+typedef void (tLooper)(void);
+typedef struct tTimer {
+	int seconds;
+	tLooper *looper;
+	int remaining;
+	char reason[128];
+	pthread_t thread_id;
+} tTimer;
+int do_loop(tLooper looper, int delay_before);
+tTimer *timer_start(tLooper looper, int seconds, int iterations, char *reason);
+void timer_extend_iterations(tTimer *timer, int iterations, int overwrite);
+void timer_destroy(tTimer *timer);
 
 #define	BUFSIZE		8192
 
@@ -608,11 +623,13 @@ void handlers_set_path(char *path);
 void *utils_alloc(char *var, int len);
 void *utils_free(char *vt, void *var);
 int shared_mem_init(void);
+int shared_mem_check(void);
 int shared_mem_init_first(void);
 void shared_mem_free(void);
 int utils_pid_get_host_clients(char *host);
 int utils_pid_get_num_with_reason(char *reason);
 int utils_pid_exists(pid_t pid);
+int utils_pid_exists_in_system(pid_t pid);
 char *format_size(unsigned long value);
 unsigned long calculate_shared_memory_allocation(void);
 int utils_pid_num_free(void);

@@ -222,9 +222,10 @@ void atex(void)
 	}
 	total_cleanup();
 
+	//utils_pid_delete( getpid() );
+	//utils_hosting_delete( getpid() );
+
 	DPRINTF("Process with PID #%d exiting now...\n", getpid());
-	utils_pid_delete( getpid() );
-	utils_hosting_delete( getpid() );
 }
 
 void test_alloc(void)
@@ -238,13 +239,65 @@ void test_alloc(void)
 void show_info_banner(void)
 {
 	printf("CDV WebServer v%s (%s minCrypt support, %s PCRE support, %s GNU Readline support, %s Kerberos 5 support over GSS-API, "
-		"%s MySQL database support, %s GeoIP support)\n\n", VERSION,
+		"%s MySQL database support, %s GeoIP support, %s threads support)\n\n", VERSION,
 		USE_MINCRYPT ? "with" : "without",
 		USE_PCRE ? "with" : "without",
 		USE_READLINE ? "with" : "without",
 		USE_KERBEROS ? "with" : "without",
 		USE_MYSQL ? "with" : "without",
-		USE_GEOIP ? "with" : "without");
+		USE_GEOIP ? "with" : "without",
+		USE_THREADS ? "with" : "without");
+}
+
+void test_looper(void)
+{
+	if (parent_pid != getpid())
+		return;
+
+	DPRINTF("Test looper\n");
+}
+
+void main_looper(void)
+{
+	int i;
+
+	if (parent_pid != getpid())
+		return;
+
+	if ((shared_mem == NULL) || (shared_mem_check() < 0))
+		return;
+
+	for (i = 0; i < shared_mem->_num_pids; i++) {
+		char *reason = strdup(shared_mem->_pids[i].reason);
+		if ((strstr(reason, "Control") == NULL)
+			&& (strstr(reason, "Server") == NULL)) {
+			if (utils_pid_exists_in_system(shared_mem->_pids[i].pid) == 0) {
+				pid_t pid = shared_mem->_pids[i].pid;
+
+				waitpid(pid, NULL, 0);
+				utils_pid_delete( pid );
+				utils_hosting_delete( pid );
+			}
+		}
+	}
+}
+
+void sig_chld(int signo)
+{
+	if (signo != SIGCHLD)
+		return;
+
+	DPRINTF("SIGNO: %d\n", signo);
+
+	int stat;
+	pid_t pid;
+	while ((pid = waitpid(-1, &stat, WNOHANG)) > 0) {
+		DPRINTF("%s: Child with PID #%d terminated\n",
+			__FUNCTION__, pid);
+
+		utils_pid_delete( pid );
+		utils_hosting_delete( pid );
+	}
 }
 
 int main(int argc, char *argv[])
@@ -275,6 +328,12 @@ int main(int argc, char *argv[])
 	}
 
 	utils_pid_add( parent_pid, "Control process");
+
+	do_loop(main_looper, 5);
+
+	//timer_start(test_looper, 5, -1, "Reason");
+
+	//signal(SIGCHLD, sig_chld);
 
 	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0)) {
 		_shell_enabled = 1;

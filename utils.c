@@ -1971,6 +1971,11 @@ void utils_pid_add(pid_t pid, char *reason)
 		return;
 	}
 
+	if (utils_pid_exists_in_system(pid) == 0) {
+		DPRINTF("%s: PID #%d doesn't exist in the system\n", __FUNCTION__, pid);
+		return;
+	}
+
 	num = shared_mem->_num_pids;
 	shared_mem->_pids[num].pid = pid;
 	if (reason != NULL)
@@ -2037,6 +2042,14 @@ int utils_pid_exists(pid_t pid)
 			return 1;
 
 	return 0;
+}
+
+int utils_pid_exists_in_system(pid_t pid)
+{
+	char tmp[256] = { 0 };
+
+	snprintf(tmp, sizeof(tmp), "/proc/%d/status", pid);
+	return (access(tmp, F_OK) == 0);
 }
 
 int utils_pid_num_free(void)

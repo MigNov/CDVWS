@@ -235,8 +235,12 @@ void tcpsig(int sig)
 	/* Let SIGUSR2 signal wait() not to leave zombies */
 	if (sig == SIGUSR1)
 		_sockets_done = 1;
-	if (sig == SIGUSR2)
+	else
+	if (sig == SIGUSR2) {
+		//_sockets_done = 1;
+		//waitpid(getpid(), NULL, 0);
 		wait(NULL);
+	}
 }
 
 int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
@@ -247,6 +251,7 @@ int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 	pid_t cpid;
 	int n, i, ret;
 	pid_t ctrl_pid;
+	int ignore_close = 0;
 
 	_sockets_done = 0;
 
@@ -286,13 +291,17 @@ int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 							}
 
 							if (process_request(ssl, s, rem, remlen, req) == 1) {
+								DPRINTF("%s: Process request function returned 1\n",
+									__FUNCTION__);
 								shutdown_common(ssl, s, SHUT_RDWR);
 								close(s);
+								DPRINTF("%s: Closing client socket\n", __FUNCTION__);
 								kill(ctrl_pid, SIGUSR2);
-								ret = 1;
+								ret = 1; ignore_close = 1;
 								goto cleanup;
 							}
 
+							DPRINTF("%s: Sending SIGUSR2\n", __FUNCTION__);
 							kill(ctrl_pid, SIGUSR2);
 						}
 						else
@@ -304,9 +313,13 @@ int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 
 	ret = 0;
 cleanup:
-	for (i = 0; i < nfds; i++) {
-		shutdown_common(ssl, _tcp_sock_fds[i].fd, SHUT_RDWR);
-		close(_tcp_sock_fds[i].fd);
+	if (ignore_close == 0) {
+		for (i = 0; i < nfds; i++) {
+			DPRINTF("%s: Closing descriptor #%d\n", __FUNCTION__,
+				_tcp_sock_fds[i].fd);
+			shutdown_common(ssl, _tcp_sock_fds[i].fd, SHUT_RDWR);
+			close(_tcp_sock_fds[i].fd);
+		}
 	}
 
 	return ret;
