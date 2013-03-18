@@ -1013,8 +1013,10 @@ int _idb_table_field_drop(long idTable, char *name)
 
 	for (i = 0; i < idb_fields_num; i++) {
 		if ((idb_fields[i].idTable == idTable)
-			&& (strcmp(idb_fields[i].name, name) == 0))
+			&& (strcmp(idb_fields[i].name, name) == 0)) {
 			id = idb_fields[i].id;
+			break;
+		}
 	}
 
 	if (id == -1) {
@@ -2201,6 +2203,9 @@ void idb_results_show(BIO *io, int cfd, tTableDataSelect tds)
 void idb_results_free(tTableDataSelect *tds)
 {
 	long i = 0, j = 0;
+
+	if (tds == NULL)
+		return;
 
 	if (tds->num_rows <= 0)
 		return;
