@@ -807,6 +807,37 @@ cleanup:
 	return ret;
 }
 
+int idb_auth_update_hash(char *filename, char *table_name, char *username, char *hash)
+{
+	int ret = -1;
+	tTableDataInput *update_fields = NULL;
+	tTableDataInput *where_fields = NULL;
+
+	ret = idb_load(filename);
+	if (ret != 0)
+		goto cleanup;
+
+	ret = 0;
+	update_fields = (tTableDataInput *)utils_alloc( "idb.idb_auth_update_hash.update_fields", sizeof(tTableDataInput) );
+	update_fields[0].name = "hash";
+	update_fields[0].sValue = hash;
+
+	where_fields = (tTableDataInput *)utils_alloc( "idb.idb_auth_update_hash.where_fields", sizeof(tTableDataInput) );
+	where_fields[0].name = "username";
+	where_fields[0].sValue = username;
+
+	if (idb_table_update(table_name, 1, update_fields, 1, where_fields) <= 0)
+		ret = -EIO;
+
+	idb_save(filename);
+	idb_free();
+
+	where_fields = utils_free("idb.idb_auth_update_hash.where_fields", where_fields);
+	update_fields = utils_free("idb.idb_auth_update_hash.update_fields", update_fields);
+cleanup:
+	return ret;
+}
+
 void idb_free(void)
 {
 	struct timespec ts;
@@ -2750,6 +2781,7 @@ long _idb_read_data_v1(int fd)
 				DPRINTF("%s: Cannot read data\n", __FUNCTION__);
 				return -EIO;
 			}
+			tmp[size] = 0;
 			DPRINTF("%s: Got string data of '%s'\n", __FUNCTION__, tmp);
 			idb_tabdata[idb_tabdata_num + i].sValue = strdup((char *)tmp);
 			tmp = utils_free("idb._idb_read_data.tmp", tmp); tmp = NULL;
@@ -2886,5 +2918,6 @@ tTableDataSelect idb_get_last_select_data(void) {};
 void idb_free_last_select_data(void) {};
 int idb_table_exists(char *filename, char *table_name) { return -1; }
 int idb_authorize(char *filename, char *table_name, char *username, char *password) { return -1; }
+int idb_auth_update_hash(char *filename, char *table_name, char *username, char *hash) { return -1; }
 #endif
 

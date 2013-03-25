@@ -291,11 +291,8 @@ int accept_loop(SSL_CTX *ctx, int nfds, tProcessRequest req)
 							}
 
 							if (process_request(ssl, s, rem, remlen, req) == 1) {
-								DPRINTF("%s: Process request function returned 1\n",
-									__FUNCTION__);
 								shutdown_common(ssl, s, SHUT_RDWR);
 								close(s);
-								DPRINTF("%s: Closing client socket\n", __FUNCTION__);
 								kill(ctrl_pid, SIGUSR2);
 								ret = 1; ignore_close = 1;
 								goto cleanup;

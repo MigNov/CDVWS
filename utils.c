@@ -2137,7 +2137,7 @@ int utils_pid_signal_all(int sig)
 	for (i = 0; i < shared_mem->_num_pids; i++) {
 		pid = shared_mem->_pids[i].pid;
 
-		/* Don't send to controll process itself */
+		/* Don't send to control process itself */
 		if (pid != parent_pid) {
 			DPRINTF("%s: Sending signal %d to PID %d\n",
 				__FUNCTION__, sig, pid);

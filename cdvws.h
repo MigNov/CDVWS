@@ -540,6 +540,7 @@ long idb_table_id(char *name);
 int idb_table_create(char *name, int num_fields, tTableFieldDef *fields, char *comment);
 int idb_table_insert(char *name, int num_data, tTableDataInput *td);
 int idb_table_update_row(char *table_name, long idRow, int num_data, tTableDataInput *td);
+int idb_auth_update_hash(char *filename, char *table_name, char *username, char *hash);
 int idb_table_update(char *table_name, int num_data, tTableDataInput *td, int num_where_fields, tTableDataInput *where_fields);
 int idb_table_delete_row(char *table_name, long idRow);
 int idb_table_delete(char *table_name, int num_where_fields, tTableDataInput *where_fields);

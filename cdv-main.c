@@ -287,8 +287,6 @@ void sig_chld(int signo)
 	if (signo != SIGCHLD)
 		return;
 
-	DPRINTF("SIGNO: %d\n", signo);
-
 	int stat;
 	pid_t pid;
 	while ((pid = waitpid(-1, &stat, WNOHANG)) > 0) {

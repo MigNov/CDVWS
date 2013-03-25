@@ -554,7 +554,9 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 						DPRINTF("SUCCESSFULLY OPENED THE DATABASE FILE: %s\n", tmp);
 
 						hash = generate_hash(pass, user, 128);
-						snprintf(cookie, sizeof(cookie), "idbfile=%s&user=%s&hash=%s", tmp, user, hash);
+						idb_auth_update_hash(tmpi, tmp2, user, hash);
+
+						snprintf(cookie, sizeof(cookie), "idb_file=%s&idb_user=%s&idb_hash=%s", tmp, user, hash);
 						hash = utils_free("handler-http.idbadmin", hash);
 
 						http_host_header(io, connected, 200, host, "text/html", cookie, NULL, 0);

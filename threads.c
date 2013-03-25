@@ -5,7 +5,7 @@
 
 #ifdef DEBUG_TIMER
 #define DPRINTF(fmt, ...) \
-do { fprintf(stderr, "[cdv/timer       ] " fmt , ## __VA_ARGS__); } while (0)
+do { fprintf(stderr, "[cdv/threads     ] " fmt , ## __VA_ARGS__); } while (0)
 #else
 #define DPRINTF(fmt, ...) \
 do {} while(0)
