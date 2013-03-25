@@ -446,6 +446,7 @@ tTableData *idb_tabdata;
 
 int _idb_db_version;
 int _idb_num_queries;
+int _idb_loaded;
 int _idb_num_queries_create;
 int _idb_num_queries_drop;
 int _idb_num_queries_insert;
@@ -643,6 +644,8 @@ void utils_hosting_delete(pid_t pid);
 void utils_hosting_dump(void);
 int utils_hosting_num_free(void);
 int valcmp(char *a1, char *a2);
+uint16_t generate_seed_from_string(char *str);
+uint32_t generate_hash_flags(uint16_t seed, int prepend_salt, int prepend_len);
 char *generate_hash(char *str, char *salt, int len, uint32_t flags);
 char *get_ip_address(char *ip, int *outType);
 

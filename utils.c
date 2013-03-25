@@ -200,6 +200,36 @@ char *generate_hex_chars(int len)
 	return tmp;
 }
 
+uint16_t generate_seed_from_string(char *str)
+{
+	int i;
+	uint16_t ret = 0;
+
+	for (i = 0; i < strlen(str); i++)
+		ret += str[i] << i;
+
+	DPRINTF("%s(%s) returning 0x%"PRIx16"\n", __FUNCTION__, str, ret);
+	return ret;
+}
+
+uint32_t generate_hash_flags(uint16_t seed, int prepend_salt, int prepend_len)
+{
+	uint32_t ret = 0;
+
+	if (seed > 0)
+		ret |= (HASH_FLAGS_HAVE_SEED | (seed << 16));
+
+	if (prepend_salt)
+		ret |= HASH_FLAGS_PREPEND_SALT;
+
+	if (prepend_len)
+		ret |= HASH_FLAGS_PREPEND_LENGTH;
+
+	DPRINTF("%s(0x%"PRIx16", %d, %d) returning 0x%"PRIx32"\n", __FUNCTION__,
+		seed, prepend_salt, prepend_len, ret);
+	return ret;
+}
+
 char *generate_hash(char *str, char *salt, int len, uint32_t flags)
 {
 	int olen;

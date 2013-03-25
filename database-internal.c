@@ -32,6 +32,7 @@ int idb_init(void)
 	_idb_datadir  = NULL;
 	_idb_querylog = NULL;
 
+	_idb_loaded = 0;
 	_idb_mincrypt_enabled = 0;
 
 	_idb_num_queries = 0;
@@ -106,6 +107,14 @@ char *_idb_get_input_value(char *data, int *otype)
 	return out;
 }
 
+int _idb_close(void)
+{
+	DPRINTF("%s: Closing database session\n", __FUNCTION__);
+	idb_free();
+
+	return 0;
+}
+
 int idb_query(char *query)
 {
 	int i, ret = -ENOTSUP;
@@ -143,6 +152,9 @@ int idb_query(char *query)
 	idb_get_time( TIME_CURRENT );
 
 	if (strncmp(query, "INIT", 4) == 0) {
+		if (_idb_loaded == 1)
+			_idb_close();
+
 		t = tokenize(query, " ");
 
 		if (strcmp(t.tokens[0], "INIT") == 0) {
@@ -161,6 +173,9 @@ int idb_query(char *query)
 	}
 	else
 	if (strncmp(query, "REINIT", 6) == 0) {
+		if (_idb_loaded == 1)
+			_idb_close();
+
 		t = tokenize(query, " ");
 
 		if (strcmp(t.tokens[0], "REINIT") == 0) {
@@ -695,10 +710,13 @@ int idb_query(char *query)
 	}
 	else
 	if (strcmp(query, "CLOSE") == 0) {
+/*
 		DPRINTF("%s: Closing database session\n", __FUNCTION__);
 		idb_free();
 
 		ret = 0;
+*/
+		ret = _idb_close();
 	}
 	else
 	if (strcmp(query, "DUMP") == 0) {
@@ -894,6 +912,7 @@ void idb_free(void)
 	}
 
 	_idb_num_queries = 0;
+	_idb_loaded = 0;
 }
 
 long _idb_get_free_id(int type)
@@ -2838,9 +2857,12 @@ int idb_load(char *filename)
 
 	ret = (get_file_size(filename) != data_len) ? -EIO : 0;
 
-	if (ret == 0)
+	if (ret == 0) {
 		DPRINTF("%s: File '%s' loaded, size is %ld bytes\n", __FUNCTION__,
 			filename, data_len);
+
+		_idb_loaded = 1;
+	}
 	else
 		DPRINTF("%s: Error on loading file '%s'\n", __FUNCTION__,
 			filename);
