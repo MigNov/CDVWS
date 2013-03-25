@@ -613,17 +613,18 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 	if (strncmp(str, "hash", 4) == 0) {
 		tTokenizer t = tokenize(str, " ");
 
-		if (t.numTokens < 4)
-			desc_printf(io, cfd, "Syntax: hash <string> <salt> <len>\n");
+		if (t.numTokens < 5)
+			desc_printf(io, cfd, "Syntax: hash <string> <salt> <len> <flags>\n");
 		else {
 			char *str = t.tokens[1];
 			char *salt = t.tokens[2];
 			int len = atoi(t.tokens[3]);
+			uint32_t flags = (uint32_t)atoll(t.tokens[4]);
 
 			if (len < 16)
 				desc_printf(io, cfd, "Cannot generate hash, length have to be greated than 15\n");
 			else
-				desc_printf(io, cfd, "Hash is %s\n", generate_hash(str, salt, len));
+				desc_printf(io, cfd, "Hash is %s\n", generate_hash(str, salt, len, flags));
 		}
 		free_tokens(t);
 	}

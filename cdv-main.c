@@ -350,23 +350,23 @@ int main(int argc, char *argv[])
 		char salt2[] = "salt value2";
 		char salts[] = "test";
 		char saltt[] = "tesu";
-		char *hash = generate_hash(str, salt, len);
+		char *hash = generate_hash(str, salt, len, 0);
 
 		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
 			str, salt, len, hash, (int)strlen(hash));
 		hash = utils_free("main.hash1", hash);
 
-		hash = generate_hash(str, salt2, len);
+		hash = generate_hash(str, salt2, len, 0);
 		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
 			str, salt2, len, hash, (int)strlen(hash));
 		hash = utils_free("main.hash2", hash);
 
-		hash = generate_hash(strs, salts, len);
+		hash = generate_hash(strs, salts, len, 0);
 		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
 			strs, salts, len, hash, (int)strlen(hash));
 		hash = utils_free("main.hash3", hash);
 
-		hash = generate_hash(strs, saltt, len);
+		hash = generate_hash(strs, saltt, len, 0);
 		printf("Input data: string '%s', salt '%s', length %d bytes in hex format\n => Resulting hash: %s (%d bytes)\n",
 			strs, saltt, len, hash, (int)strlen(hash));
 		hash = utils_free("main.hash4", hash);

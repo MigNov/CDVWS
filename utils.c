@@ -200,12 +200,14 @@ char *generate_hex_chars(int len)
 	return tmp;
 }
 
-char *generate_hash(char *str, char *salt, int len)
+char *generate_hash(char *str, char *salt, int len, uint32_t flags)
 {
 	int olen;
 	int i, j, c, k, l;
 	char *ret = NULL;
 	char tmp[1024] = { 0 };
+	int p_salt = 0, p_len = 0;
+	uint16_t seed = 0;
 
 	if (len % 2 != 0) {
 		DPRINTF("%s: Invalid length. Length have to be multiple of 2\n", __FUNCTION__);
@@ -213,6 +215,18 @@ char *generate_hash(char *str, char *salt, int len)
 	}
 
 	olen = len;
+
+	/* Process flags for generate_hash() */
+	if (flags & HASH_FLAGS_HAVE_SEED)
+		seed = (flags >> 16);
+	if (flags & HASH_FLAGS_PREPEND_SALT)
+		p_salt = (flags & HASH_FLAGS_PREPEND_SALT == 0) ? 0 : 1;
+	if (flags & HASH_FLAGS_PREPEND_LENGTH)
+		p_len = (flags & HASH_FLAGS_PREPEND_LENGTH == 0) ? 0 : 1;
+
+	DPRINTF("%s: Seed is 0x%"PRIx16" (%"PRIi16")\n", __FUNCTION__, seed, seed);
+	DPRINTF("%s: Prepend salt is %s\n", __FUNCTION__, p_salt ? "enabled" : "disabled");
+	DPRINTF("%s: Prepend length is %s\n", __FUNCTION__, p_len ? "enabled" : "disabled");
 
 	/* Divide length by two first */
 	len /= 2;
@@ -232,6 +246,25 @@ char *generate_hash(char *str, char *salt, int len)
 	for (i = 0; i < strlen(str); i++)
 		k += str[i];
 
+	if (p_salt || p_len)
+		strcat(ret, "$");
+
+	if (p_salt) {
+		for (i = 0; i < strlen(salt); i++)
+			k += salt[i];
+
+		strcat(ret, salt);
+		strcat(ret, "$");
+	}
+	if (p_len) {
+		char tmp[5] = { 0 };
+		k += p_len;
+
+		snprintf(tmp, sizeof(tmp), "%03x", len);
+		strcat(ret, tmp);
+		strcat(ret, "$");
+	}
+
 	l = j;
 	j *= k;
 	k /= l;
@@ -243,14 +276,28 @@ char *generate_hash(char *str, char *salt, int len)
 
 	/* And we iterate all the string and do hash calculations */
 	for (i = 0; i < strlen(str); i++) {
-		c = (str[(i + k) % strlen(str)] * salt[(i + j) % strlen(salt)] + j) % 65536;
-		DPRINTF("%s: c#%03d: %06d, j = %10d, k = %5d, c(h) = 0x%04x\n", __FUNCTION__, i, c, j, k, c);
+		int shift = 0;
+
+		i = abs(i);
+		c = abs(c);
+		j = abs(j);
+		k = abs(k);
+
+		if (seed > 0) {
+			if (i % 2 == 0)
+				shift = ((seed >> 8) & 0xFF) + (i << 2);
+			else
+				shift = ((seed & 0xFF) & 0xFF) + (i << 2);
+		}
+
+		c = ((str[(i + k) % strlen(str)] * salt[(i + j) % strlen(salt)] + j) % 0xFFFF) + shift;
+		DPRINTF("%s: c#%03d: j = 0x%08x, k = 0x%04x, c(h) = 0x%04x (shift 0x%02x)\n", __FUNCTION__, i, j, k, c, shift);
 
 		snprintf(tmp, sizeof(tmp), "%04x", c);
 		strcat(ret, tmp);
 
 		l = str[i] & salt[i % strlen(salt)];
-		switch (l % 16) {
+		switch (c % 16) {
 			case 0: k += l; j += l;
 				break;
 			case 1: k += l; j -= l;
@@ -305,8 +352,8 @@ char *generate_hash(char *str, char *salt, int len)
 	DPRINTF("%s: Total hash length in hexadecimal format is %d bytes\n",
 		__FUNCTION__, (int)strlen(ret));
 
-	DPRINTF("%s('%s', '%s', %d) returning %d bytes\n", __FUNCTION__, str, salt, olen,
-		(int)strlen(ret));
+	DPRINTF("%s('%s', '%s', %d, 0x%"PRIx32") returning %d bytes\n", __FUNCTION__, str, salt, olen,
+		flags, (int)strlen(ret));
 	DPRINTF("    returning '%s'\n", ret);
 
 	return ret;

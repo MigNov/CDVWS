@@ -374,6 +374,10 @@ char *_shell_history_file;
 #define HTTP_CODE_NOT_FOUND	404
 #define HTTP_CODE_NOT_ALLOWED	405
 
+#define	HASH_FLAGS_HAVE_SEED		0x01
+#define	HASH_FLAGS_PREPEND_SALT		0x02
+#define	HASH_FLAGS_PREPEND_LENGTH	0x04
+
 #ifdef USE_INTERNAL_DB
 typedef struct tTableDef {
 	long id;
@@ -639,7 +643,7 @@ void utils_hosting_delete(pid_t pid);
 void utils_hosting_dump(void);
 int utils_hosting_num_free(void);
 int valcmp(char *a1, char *a2);
-char *generate_hash(char *str, char *salt, int len);
+char *generate_hash(char *str, char *salt, int len, uint32_t flags);
 char *get_ip_address(char *ip, int *outType);
 
 #ifdef USE_GEOIP

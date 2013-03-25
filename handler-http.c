@@ -553,7 +553,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 
 						DPRINTF("SUCCESSFULLY OPENED THE DATABASE FILE: %s\n", tmp);
 
-						hash = generate_hash(pass, user, 128);
+						hash = generate_hash(pass, user, 128, 0);
 						idb_auth_update_hash(tmpi, tmp2, user, hash);
 
 						snprintf(cookie, sizeof(cookie), "idb_file=%s&idb_user=%s&idb_hash=%s", tmp, user, hash);
