@@ -429,6 +429,15 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 	else
+	if ((argc > 1) && (strcmp(argv[1], "--test-json") == 0)) {
+		jsonrpc_process("\"array\": { \"l1\": 111, \"subarray\": { \"subsubarray\": { \"int\": 1, \"str\": \"string\"  }, }, \"list\": [ 232, 2542, 3432 ] }");
+		jsonrpc_process("{ \"execute\": \"method\" }");
+
+		jsonrpc_process("\t\"array\": {\n\t\t\"l1\": 111,\n\t\t\"subarray\": {\n\t\t\t\"subsubarray\": {\n\t\t\t\t\"int\": 1,\n\t\t\t\t\"str\": \"string\"\n\t\t\t\t},\n\t\t\t},\n\t\t\"list\": [ '1', '2', '333', 'string' ]\n\t}");
+
+		return 1;
+	}
+	else
 	if ((argc > 1) && (strcmp(argv[1], "--test-rewrite-rules") == 0)) {
 		char *trans = NULL;
 		char str[] = "/article123-test.html";
