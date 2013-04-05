@@ -420,6 +420,52 @@ unsigned char *data_fetch(int fd, int len, long *size, int extra)
 	return data;
 }
 
+int *id_list_push(char *name, int *ids, int *id_num, int id)
+{
+	int sid_num = *id_num;
+
+	if (ids == NULL)
+		ids = (int *)malloc( sizeof(int) );
+	else
+		ids = (int *)realloc(ids, sizeof(int) * (sid_num + 1 ) );
+
+	ids[sid_num] = id;
+	sid_num++;
+
+	*id_num = sid_num;
+
+	DPRINTF("%s(%s, %d, %d) done\n", __FUNCTION__, name, sid_num, id);
+	return ids;
+}
+
+int *id_list_pop(char *name, int *ids, int *id_num, int *id_out)
+{
+	int id, sid_num = *id_num;
+
+	if ((ids == NULL) || (id_out == NULL))
+		return -1;
+
+	DPRINTF("%s(%s, %d) entering\n", __FUNCTION__, name, sid_num);
+
+	id = ids[sid_num - 1];
+
+	ids[sid_num] = 0;
+	if (sid_num > 0)
+		ids = realloc( ids, sizeof(int) * (sid_num - 1 ) );
+	else {
+		free(ids);
+		ids = NULL;
+	}
+
+	*id_out = id;
+	sid_num--;
+
+	*id_num = sid_num;
+
+	DPRINTF("%s(%s, %d) returns %d\n", __FUNCTION__, name, sid_num, id);
+	return ids;
+}
+
 void project_info_init(void)
 {
 	project_info.root_dir = NULL;

@@ -33,6 +33,7 @@
 #define DEBUG_IDB
 #define DEBUG_DB
 #define DEBUG_DEFS
+#define DEBUG_JSON
 #define DEBUG_HTTP_HANDLER
 #define DEBUG_SSL
 #define DEBUG_MINCRYPT
@@ -678,9 +679,12 @@ int xml_query(char *xmlFile, char *xPath);
 char *xml_get(char *basefile, char *node, char *name, char *value, char *out_value);
 void xml_dump(void);
 int xml_cleanup(void);
+int *id_list_push(char *name, int *ids, int *id_num, int id);
+int *id_list_pop(char *name, int *ids, int *id_num, int *id_out);
 
-/* XmlRPC related stuff */
+/* XmlRPC & JSON related stuff */
 char *xmlrpc_process(char *xml);
+int jsonrpc_process(char *json_string);
 
 /* RegEx stuff */
 int regex_parse(char *xmlFile);

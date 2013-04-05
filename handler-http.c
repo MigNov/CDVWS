@@ -555,7 +555,7 @@ int process_request_common(SSL *ssl, BIO *io, int connected, struct sockaddr_sto
 
 						hash = generate_hash(pass, user, 128,
 								generate_hash_flags(
-									generate_seed_from_string(tmp), 0, 1));
+									generate_seed_from_string(tmp), 0, 0));
 						idb_auth_update_hash(tmpi, tmp2, user, hash);
 
 						snprintf(cookie, sizeof(cookie), "idb_file=%s&idb_user=%s&idb_hash=%s", tmp, user, hash);

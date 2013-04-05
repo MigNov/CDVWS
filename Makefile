@@ -14,7 +14,7 @@ GEOIP=-lGeoIP -DUSE_GEOIP $(GEOIP_TEST)
 #KRB5DEBUG=-DAUTH_MSG_SLEEP
 DEBUG=-g $(KRB5DEBUG)
 PTHREADS=-lpthread -DUSE_THREADS
-OBJECTS=cdv-main.c utils.c config.c definitions.c modules.c xml.c database.c database-internal.c sockets.c mincrypt-wrap.c handler-http.c cdvshell.c xmlrpc.c variables.c scripting.c regex.c handler-auth.c base64.c threads.c
+OBJECTS=cdv-main.c utils.c config.c definitions.c modules.c xml.c database.c database-internal.c sockets.c mincrypt-wrap.c handler-http.c cdvshell.c xmlrpc.c variables.c scripting.c regex.c handler-auth.c base64.c threads.c json.c
 
 all:
 	@rm -rf ./bindir
