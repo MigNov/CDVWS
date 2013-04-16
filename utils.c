@@ -54,6 +54,12 @@ int first_initialize(int enabled)
 	gHttpHandler = 0;
 	myRealm = NULL;
 
+	crc32_init();
+
+	#ifdef USE_NOTIFIER
+	CDV_INIT(_notifiers);
+	#endif
+
 	return 0;
 }
 
@@ -97,6 +103,10 @@ void cleanup(void)
 void total_cleanup(void)
 {
 	cleanup();
+
+        #ifdef USE_NOTIFIER
+        notifier_pool_free();
+        #endif
 
 	if (_dump_fp != NULL) {
 		fclose(_dump_fp);
@@ -443,7 +453,7 @@ int *id_list_pop(char *name, int *ids, int *id_num, int *id_out)
 	int id, sid_num = *id_num;
 
 	if ((ids == NULL) || (id_out == NULL))
-		return -1;
+		return ids;
 
 	DPRINTF("%s(%s, %d) entering\n", __FUNCTION__, name, sid_num);
 
@@ -466,6 +476,149 @@ int *id_list_pop(char *name, int *ids, int *id_num, int *id_out)
 	return ids;
 }
 
+int lock_file_present(char *filename, int flags)
+{
+	if (access(filename, R_OK) != 0)
+		return 0;
+
+	char buf[16] = { 0 };
+	int fd, rf, ret = 0;
+
+	if ((fd = open(filename, O_RDONLY)) <= 0)
+		return 0;
+	read(fd, buf, sizeof(buf));
+	close(fd);
+
+	rf = atoi(buf);
+	if ((rf & LOCK_EXCLUSIVE) && (flags & LOCK_EXCLUSIVE))
+		ret = 1;
+	else
+	if ((rf & LOCK_READ) && (flags & LOCK_READ))
+		ret = 1;
+	else
+	if ((rf & LOCK_WRITE) && (flags & LOCK_WRITE))
+		ret = 1;
+
+	DPRINTF("%s('%s', 0x%04x) returns %d\n", __FUNCTION__, filename, flags, ret);
+	return ret;
+}
+
+void _lock_flags_debug(int flags)
+{
+	DPRINTF("Lock flags: 0x%04x\n", flags);
+	if ((flags & FLOCK_CREATE) | (flags & FLOCK_EXISTS) | (flags & FLOCK_DELETE)) {
+		DPRINTF("\tFile locks:%c", '\n');
+		DPRINTF("\t\t\tCreate: %s\n", flags & FLOCK_CREATE ? "True" : "False");
+		DPRINTF("\t\t\tExists: %s\n", flags & FLOCK_EXISTS ? "True" : "False");
+		DPRINTF("\t\t\tDelete: %s\n", flags & FLOCK_DELETE ? "True" : "False");
+		DPRINTF("%c", '\n');
+	}
+	DPRINTF("\tLock types:%c", '\n');
+	DPRINTF("\t\t     Read lock: %s\n", flags & LOCK_READ ? "True" : "False");
+	DPRINTF("\t\t    Write lock: %s\n", flags & LOCK_WRITE ? "True" : "False");
+	DPRINTF("\t\tExclusive lock: %s\n", flags & LOCK_EXCLUSIVE ? "True" : "False");
+	DPRINTF("%c", '\n');
+}
+
+int lock_file_create(char *filename, int flags)
+{
+	if (lock_file_present(filename, flags)) {
+		DPRINTF("%s: Lock file already exists\n", __FUNCTION__);
+		return -EEXIST;
+	}
+
+	char buf[16] = { 0 };
+	int fd, ret;
+
+	ret = (flags & LOCK_EXCLUSIVE) | (flags & LOCK_READ) | (flags & LOCK_WRITE);
+
+	DPRINTF("%s('%s', 0x%04x) called\n", __FUNCTION__, filename, ret);
+	_lock_flags_debug(ret);
+	snprintf(buf, sizeof(buf), "%d", ret);
+	fd = open(filename, O_WRONLY | O_CREAT, 0600);
+	write(fd, buf, sizeof(buf));
+	close(fd);
+
+	return (lock_file_present(filename, flags) == 1) ? 0 : -EIO;
+}
+
+int lock_file_release(char *filename, int flags)
+{
+	if (!lock_file_present(filename, flags)) {
+		DPRINTF("%s: Lock file doesn't exist\n", __FUNCTION__);
+		return -ENOENT;
+	}
+
+	if (flags & LOCK_ALL) { 
+		if (unlink(filename) != 0)
+			DPRINTF("%s: Cannot unlink '%s'\n", __FUNCTION__, filename);
+
+		goto cleanup;
+	}
+
+	char buf[16] = { 0 };
+	int fd, rf;
+
+	if ((fd = open(filename, O_RDONLY)) <= 0)
+	read(fd, buf, sizeof(buf));
+	close(fd);
+
+	rf = atoi(buf);
+
+	if (flags & LOCK_EXCLUSIVE)
+		rf &= ~LOCK_EXCLUSIVE;
+	if (flags & LOCK_READ)
+		rf &= ~LOCK_READ;
+	if (flags & LOCK_WRITE)
+		rf &= ~LOCK_WRITE;
+
+	DPRINTF("%s('%s', 0x%04x) new flags\n", __FUNCTION__, filename, flags);
+	_lock_flags_debug(rf);
+	if (rf == 0) {
+		if (unlink(filename) != 0)
+			DPRINTF("%s: Cannot unlink '%s'\n", __FUNCTION__, filename);
+	}
+	else {
+		snprintf(buf, sizeof(buf), "%d", rf);
+
+		fd = open(filename, O_WRONLY | O_TRUNC);
+		write(fd, buf, sizeof(buf));
+		close(fd);
+	}
+cleanup:
+	return (lock_file_present(filename, flags) == 0) ? 0 : -EIO;
+}
+
+int lock_file_for_file(char *filename, int flags)
+{
+	int ret = -EINVAL;
+	char tmp[4096] = { 0 };
+
+	if (filename == NULL)
+		return 0;
+
+	if (! ((flags & LOCK_WRITE) || (flags & LOCK_READ)
+		|| (flags & LOCK_EXCLUSIVE) || (flags & LOCK_ALL)) ) {
+		DPRINTF("%s: Warning - lock type is missing. Skipping.\n", __FUNCTION__);
+		return ret;
+	}
+
+	snprintf(tmp, sizeof(tmp), "%s.lock", filename);
+	if (flags & FLOCK_CREATE)
+		ret = lock_file_create(tmp, flags);
+	else
+	if (flags & FLOCK_EXISTS)
+		ret = (lock_file_present(tmp, flags) == 1) ? 0 : -ENOENT;
+	else
+	if (flags & FLOCK_DELETE)
+		ret = lock_file_release(tmp, flags);
+
+	_lock_flags_debug(flags);
+	DPRINTF("%s('%s', 0x%04x) returning %d\n", __FUNCTION__, filename, flags, ret);
+
+	return ret;
+}
+
 void project_info_init(void)
 {
 	project_info.root_dir = NULL;
@@ -474,6 +627,7 @@ void project_info_init(void)
 	project_info.admin_mail = NULL;
 	project_info.file_config = NULL;
 	project_info.dir_defs = NULL;
+	project_info.dir_database = NULL;
 	project_info.dir_views = NULL;
 	project_info.dir_files = NULL;
 	project_info.dir_scripts = NULL;
@@ -509,6 +663,7 @@ void project_info_fill(void)
 	project_info.admin_mail = config_get("project", "administrator.email");
 	project_info.file_config = config_get("project", "config.file");
 	project_info.dir_defs = config_get("project", "config.directory.definitions");
+	project_info.dir_database = config_get("project", "config.directory.database");
 	project_info.dir_views = config_get("project", "config.directory.views");
 	project_info.dir_files = config_get("project", "config.directory.files");
 	project_info.dir_scripts = config_get("project", "config.directory.scripts");
@@ -647,6 +802,10 @@ void project_info_dump(void)
 		dump_printf("\tProject definitions dir: '%s'\n", project_info.dir_defs);
 		num++;
 	}
+	if (project_info.dir_database != NULL) {
+		dump_printf("\tProject database dir: '%s'\n", project_info.dir_database);
+		num++;
+	}
 	if (project_info.dir_views != NULL) {
 		dump_printf("\tProject views dir: '%s'\n", project_info.dir_views);
 		num++;
@@ -680,6 +839,8 @@ char *project_info_get(char *type)
 		return strdup(project_info.file_config);
 	if ((project_info.dir_defs != NULL) && (strcmp(type, "dir_defs") == 0))
 		return strdup(project_info.dir_defs);
+	if ((project_info.dir_database != NULL) && (strcmp(type, "dir_database") == 0))
+		return strdup(project_info.dir_database);
 	if ((project_info.dir_views != NULL) && (strcmp(type, "dir_views") == 0))
 		return strdup(project_info.dir_views);
 	if ((project_info.dir_files != NULL) && (strcmp(type, "dir_files") == 0))
@@ -732,6 +893,7 @@ void project_info_cleanup(void)
 	project_info.admin_mail = utils_free("utils.project_info_cleanup", project_info.admin_mail);
 	project_info.file_config = utils_free("utils.project_info_cleanup", project_info.file_config);
 	project_info.dir_defs = utils_free("utils.project_info_cleanup", project_info.dir_defs);
+	project_info.dir_database = utils_free("utils.project_info_cleanup", project_info.dir_database);
 	project_info.dir_views = utils_free("utils.project_info_cleanup", project_info.dir_views);
 	project_info.dir_files = utils_free("utils.project_info_cleanup", project_info.dir_files);
 	project_info.dir_scripts = utils_free("utils.project_info_cleanup", project_info.dir_scripts);
@@ -1236,6 +1398,49 @@ int _try_project_match(char *pd, char *host)
 	closedir(d);
 
 	return ret;
+}
+
+int for_all_projects(char *docroot, tOneStrFunc tFunc)
+{
+	int num = 0;
+	struct dirent *de = NULL;
+	DIR *d = NULL;
+
+	if (docroot == NULL)
+		return -EINVAL;
+
+	d = opendir(docroot);
+	if (d == NULL)
+		return 0;
+
+	while ((de = readdir(d)) != NULL) {
+		if (de->d_name[0] != '.') {
+			char tmp[4096] = { 0 };
+			snprintf(tmp, sizeof(tmp), "%s/%s",
+				docroot, de->d_name);
+
+			struct dirent *de2 = NULL;
+			DIR *d2 = opendir(tmp);
+
+			while ((de2 = readdir(d2)) != NULL) {
+				if (strstr(de2->d_name, ".project") != NULL) {
+					snprintf(tmp, sizeof(tmp), "%s/%s/%s",
+						docroot, de->d_name, de2->d_name);
+
+					if (load_project(tmp) == 0) {
+						tFunc(de->d_name);
+						cleanup();
+						num++;
+					}
+				}
+			}
+
+			closedir(d2);
+		}
+	}
+	closedir(d);
+
+	return num;
 }
 
 int find_project_for_web(char *directory, char *host)

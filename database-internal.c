@@ -109,6 +109,11 @@ char *_idb_get_input_value(char *data, int *otype)
 
 int _idb_close(void)
 {
+	if (_idb_readonly == 0) {
+		if (lock_file_for_file(_idb_filename, FLOCK_DELETE | LOCK_WRITE) != 0)
+			DPRINTF("%s: Cannot release lock file\n", __FUNCTION__);
+	}
+
 	DPRINTF("%s: Closing database session\n", __FUNCTION__);
 	idb_free();
 
@@ -158,14 +163,19 @@ int idb_query(char *query)
 		t = tokenize(query, " ");
 
 		if (strcmp(t.tokens[0], "INIT") == 0) {
+			int ro = 0;
+			if ((t.numTokens >= 3) && ((strcasecmp(t.tokens[2], "READONLY") == 0)
+				|| (strcasecmp(t.tokens[2], "READ-ONLY") == 0)
+				|| (strcasecmp(t.tokens[2], "RO") == 0)))
+					ro = 1;
 			_idb_db_version = IDB_VERSION;
 			if (_idb_datadir == NULL)
-				ret = idb_load(t.tokens[1]);
+				ret = idb_load(t.tokens[1], ro);
 			else {
 				char path[4096] = { 0 };
 				snprintf(path, sizeof(path), "%s/%s", _idb_datadir, t.tokens[1]);
 
-				ret = idb_load(path);
+				ret = idb_load(path, ro);
 			}
 		}
 
@@ -179,17 +189,22 @@ int idb_query(char *query)
 		t = tokenize(query, " ");
 
 		if (strcmp(t.tokens[0], "REINIT") == 0) {
+			int ro = 0;
+			if ((t.numTokens >= 3) && ((strcasecmp(t.tokens[2], "READONLY") == 0)
+				|| (strcasecmp(t.tokens[2], "READ-ONLY") == 0)
+				|| (strcasecmp(t.tokens[2], "RO") == 0)))
+					ro = 1;
 			_idb_db_version = IDB_VERSION;
 			if (_idb_datadir == NULL) {
 				unlink(t.tokens[1]);
-				ret = idb_load(t.tokens[1]);
+				ret = idb_load(t.tokens[1], ro);
 			}
 			else {
 				char path[4096] = { 0 };
 				snprintf(path, sizeof(path), "%s/%s", _idb_datadir, t.tokens[1]);
 
 				unlink(path);
-				ret = idb_load(path);
+				ret = idb_load(path, ro);
 			}
 		}
 	}
@@ -704,7 +719,7 @@ int idb_query(char *query)
 		idb_free();
 		idb_init();
 
-		ret = idb_load(filename);
+		ret = idb_load(filename, _idb_readonly);
 		filename = utils_free("idb.idb_query.filename", filename);
 		filename = NULL;
 	}
@@ -771,7 +786,7 @@ int idb_table_exists(char *filename, char *table_name)
 {
 	int i, ret;
 
-	ret = idb_load(filename);
+	ret = idb_load(filename, 1);
 	if (ret != 0) {
 		ret = -1;
 		goto cleanup;
@@ -798,7 +813,7 @@ int idb_authorize(char *filename, char *table_name, char *username, char *passwo
 	tTableDataSelect tds = tdsNone;
 	tTableDataInput *where_fields = NULL;
 
-	ret = idb_load(filename);
+	ret = idb_load(filename, 1);
 	if (ret != 0) {
 		ret = -1;
 		goto cleanup;
@@ -831,7 +846,7 @@ int idb_auth_update_hash(char *filename, char *table_name, char *username, char 
 	tTableDataInput *update_fields = NULL;
 	tTableDataInput *where_fields = NULL;
 
-	ret = idb_load(filename);
+	ret = idb_load(filename, 0);
 	if (ret != 0)
 		goto cleanup;
 
@@ -2820,7 +2835,7 @@ long _idb_read_data(int fd)
 	return -ENOTSUP;
 }
 
-int idb_load(char *filename)
+int idb_load(char *filename, int readonly)
 {
 	long len;
 	int fd, ret = -EINVAL;
@@ -2829,6 +2844,33 @@ int idb_load(char *filename)
 
 	if (filename == NULL)
 		return ret;
+
+	DPRINTF("%s: Trying to open '%s' (read-%s)\n", __FUNCTION__, filename, (readonly ? "only" : "write"));
+	if (lock_file_for_file(filename, FLOCK_EXISTS | LOCK_EXCLUSIVE) == 0) {
+		DPRINTF("%s: Exclusive lock present, cannot load\n", __FUNCTION__);
+		return -EIO;
+	}
+
+	if (readonly) {
+		_idb_readonly = 1;
+		if (lock_file_for_file(filename, FLOCK_EXISTS | LOCK_READ) == 0) {
+			DPRINTF("%s: Read lock present, cannot load\n", __FUNCTION__);
+			return -EIO;
+		}
+
+		DPRINTF("%s: Opening '%s' in read-only mode\n", __FUNCTION__, filename);
+	}
+	else {
+		_idb_readonly = 0;
+		if (lock_file_for_file(filename, FLOCK_EXISTS | LOCK_WRITE) == 0) {
+			if (lock_file_for_file(filename, FLOCK_EXISTS | LOCK_READ) == 0) {
+				DPRINTF("%s: Read lock present, cannot load\n", __FUNCTION__);
+				return -EIO;
+			}
+			_idb_readonly = 1;
+			DPRINTF("%s: Write lock present, enabling readonly mode\n", __FUNCTION__);
+		}
+	}
 
 	_idb_filename = strdup(filename);
 
@@ -2862,6 +2904,11 @@ int idb_load(char *filename)
 			filename, data_len);
 
 		_idb_loaded = 1;
+
+		if (_idb_readonly == 0) {
+			if (lock_file_for_file(filename, FLOCK_CREATE | LOCK_WRITE) != 0)
+				DPRINTF("%s: Cannot create lock file\n", __FUNCTION__);
+		}
 	}
 	else
 		DPRINTF("%s: Error on loading file '%s'\n", __FUNCTION__,
@@ -2891,6 +2938,10 @@ int idb_save(char *filename)
 
 	if (filename == NULL)
 		filename = _idb_filename;
+	if ((_idb_readonly == 1) && (strcmp(_idb_filename, filename) == 0)) {
+		DPRINTF("%s: File opened in read-only mode\n", __FUNCTION__);
+		return -EPERM;
+	}
 	if (filename == NULL)
 		return -EINVAL;
 
@@ -2931,7 +2982,7 @@ void idb_results_dump(tTableDataSelect tds) {};
 void idb_results_free(tTableDataSelect tds) {};
 void idb_dump(void) {};
 int idb_type_id(char *type) {};
-int idb_load(char *filename) {};
+int idb_load(char *filename, int readonly) {};
 int idb_save(char *filename) {};
 char *idb_get_filename(void) {};
 int idb_query(char *query) {};
@@ -2941,5 +2992,6 @@ void idb_free_last_select_data(void) {};
 int idb_table_exists(char *filename, char *table_name) { return -1; }
 int idb_authorize(char *filename, char *table_name, char *username, char *password) { return -1; }
 int idb_auth_update_hash(char *filename, char *table_name, char *username, char *hash) { return -1; }
+int _idb_close(void) { return -1; };
 #endif
 

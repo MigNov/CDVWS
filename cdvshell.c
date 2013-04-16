@@ -160,8 +160,10 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 
 	if (((strlen(str) > 0) && (str[0] == -1))
 		|| (strcmp(str, "\\q") == 0)
-		|| (strcmp(str, "quit") == 0))
+		|| (strcmp(str, "quit") == 0)) {
+			_idb_close();
 			return 1;
+	}
 
 	if (strcmp(str, "help") == 0) {
 		desc_printf(io, cfd, "iDB shell help:\n\nNote: Commands *are* case sensitive\n\n"
@@ -170,8 +172,8 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 			"SET QUERYLOG <filename>\t\t- set query logging without log overwriting\n"
 			"SET DATADIR <directory>\t\t- set data directory\n"
 			"SET FILENAME <filename>\t\t- set filename to write database to\n"
-			"REINIT <filename>\t\t- initialize a fresh database in <filename>\n"
-			"INIT <filename>\t\t\t- initialize a database in <filename>\n"
+			"REINIT <filename> [RO]\t\t- initialize a fresh database in <filename> [RO=read-only]\n"
+			"INIT <filename> [RO]\t\t- initialize a database in <filename> [RO=read-only]\n"
 			"CLOSE\t\t\t\t- close database session\n\n"
 			"Database manipulation commands:\n\n"
 			"CREATE TABLE\t\t\t- create a table in database\n"
@@ -518,8 +520,12 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"kill <pid>\t\t\t\t\t\t- terminate process <pid>, <pid> have to be child of web server\n"
 			"free\t\t\t\t\t\t\t- show information about total and free shared memory usage\n"
 			"hash <string> <salt> <len>\t\t\t\t- generate hash for <string> as based on <salt> with length of <len>\n"
+			"crc32 <filename>\t\t\t\t\t- generate CRC-32 checksum for <filename> contents\n"
 			#ifdef USE_GEOIP
 			"geoip <database-file> <ip>\t\t\t\t- get IP information for <ip> from GeoIP <database-file>\n"
+			#endif
+			#ifdef USE_NOTIFIER
+			"notifiers (show|start|stop) [index]\t\t\t- show or modify state of notifiers\n"
 			#endif
 			"\n"
 			"Testing functions:\n\n"
@@ -553,6 +559,17 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 
 		ec = script_process_line(str + 5);
 		desc_printf(io, cfd, "Expression evaluation returned error code %d (%s)\n", ec, strerror(-ec));
+	}
+	else
+	if (strncmp(str, "crc32", 5) == 0) {
+		tTokenizer t = tokenize(str, " ");
+		if (t.numTokens == 2) {
+			desc_printf(io, cfd, "CRC-32 checksum for %s: 0x%"PRIx32"\n",
+				t.tokens[1], crc32_file(t.tokens[1], -1));
+		}
+		else
+			desc_printf(io, cfd, "Syntax: crc32 <filename>\n");
+		free_tokens(t);
 	}
 	else
 	if (strncmp(str, "emulate", 7) == 0) {
@@ -976,6 +993,124 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 		free_tokens(t);
 	}
 	else
+	#ifdef USE_NOTIFIER
+	if (strncmp(str, "notifiers", 9) == 0) {
+		tTokenizer t = tokenize(str, " ");
+
+		if ((t.numTokens >= 2) && (strcasecmp(t.tokens[1], "show") == 0)) {
+			int i;
+
+			desc_printf(io, cfd, "Notifier list\n");
+			for (i = 0; i < CDV_ALLOC_INDEX(_notifiers) + 1; i++) {
+				int cnt = 0;
+				if ((_notifiers[i].checksums != NULL) && (_notifiers[i].thread_id > 0)) {
+					cnt = _notifiers[i].checksums->count;
+					desc_printf(io, cfd, "\t#%d) %s (%s, watching %d file/s)\n", i + 1,
+						_notifiers[i].path, 
+						(_notifiers[i].thread_id > 0) ? "Running" : "Stopped", cnt);
+				}
+				else
+					desc_printf(io, cfd, "\t#%d) %s (%s)\n", i + 1,
+						_notifiers[i].path,
+						(_notifiers[i].thread_id > 0) ? "Running" : "Stopped");
+			}
+
+			if (CDV_ALLOC_INDEX(_notifiers) + 1 == 0)
+				desc_printf(io, cfd, "No notifiers present\n");
+
+			notifier_pool_dump();
+		}
+		else
+		if ((t.numTokens >= 3) && (strcasecmp(t.tokens[1], "files") == 0)) {
+			int i = atoi(t.tokens[2]);
+
+			if ((i <= 0) || (i > CDV_ALLOC_INDEX(_notifiers) + 1)) {
+				desc_printf(io, cfd, "Invalid index\n");
+			}
+			else {
+				i--;
+				desc_printf(io, cfd, "Files watched by notifier #%d:\n", i + 1);
+
+				if (_notifiers[i].thread_id == 0) {
+					desc_printf(io, cfd, "Notifier is stopped. Not watching any files\n");
+				}
+				else {
+					int j, shown = 0, cnt = 0;
+
+					cnt = _notifiers[i].checksums->count;
+					for (j = 0; j < cnt; j++) {
+						tFileChecksum *cso = (tFileChecksum *)_notifiers[i].checksums->items[j];
+						if (cso->type == CDVLIST_TYPE_CHECKSUMS) {
+							desc_printf(io, cfd, "\tFile #%d: %20s, file checksum: 0x%"PRIx32" (type is %s)\n",
+								j + 1, cso->filename, cso->checksum, (cso->type == FCHECKSUM_CRC32)
+								? "CRC-32" : "unknown");
+							shown++;
+						}
+					}
+
+					if (shown == 0)
+						desc_printf(io, cfd, "No files watched\n");
+				}
+			}
+		}
+		else
+		if ((t.numTokens >= 2) && (strcasecmp(t.tokens[1], "help") == 0)) {
+			desc_printf(io, cfd, "Syntax: notifiers (show|start|stop|files) [index]\n\nWhere:\n");
+			desc_printf(io, cfd, "\t\tshow\t- show list of all created notifiers\n");
+			desc_printf(io, cfd, "\tstart <index>\t- start notifier with index <index>\n");
+			desc_printf(io, cfd, "\t stop <index>\t- stop notifier with index <index>\n");
+			desc_printf(io, cfd, "\tfiles <index>\t- show files watched by notifier <index>\n");
+		}
+		else
+		if (t.numTokens >= 3) {
+			if ((strcasecmp(t.tokens[1], "start") == 0)
+				|| (strcasecmp(t.tokens[1], "stop") == 0)) {
+				int i = atoi(t.tokens[2]);
+				int isStart = (strcasecmp(t.tokens[1], "start") == 0);
+				pthread_t old_tid;
+
+				if ((i <= 0) || (i > CDV_ALLOC_INDEX(_notifiers) + 1)) {
+					desc_printf(io, cfd, "Invalid index\n");
+				}
+				else {
+					i--;
+					old_tid = _notifiers[i].thread_id;
+					if (isStart) {
+						notifier_start( &_notifiers[i] );
+
+						if (old_tid == _notifiers[i].thread_id)
+							desc_printf(io, cfd, "Notifier is already running\n");
+						else {
+							if (_notifiers[i].thread_id > 0)
+								desc_printf(io, cfd, "Notifier started successfully\n");
+							else
+								desc_printf(io, cfd, "Cannot start notifier\n");
+						}
+					}
+					else {
+						notifier_stop( &_notifiers[i] );
+
+						if (old_tid == _notifiers[i].thread_id)
+							desc_printf(io, cfd, "Notifier is not running\n");
+						else {
+							if (_notifiers[i].thread_id == 0)
+								desc_printf(io, cfd, "Notifier stopped successfully\n");
+							else
+								desc_printf(io, cfd, "Cannot stop notifier\n");
+						}
+					}
+				}
+			}
+			else
+				desc_printf(io, cfd, "Invalid command. Valid commands are: show, start, stop\n");
+		}
+		else
+			desc_printf(io, cfd, "Syntax: notifiers (show|start|stop) [index]\n");
+
+		free_tokens(t);
+	}
+	else
+	#endif
 	if ((strncmp(str, "p", 1) == 0) || (strncmp(str, "print", 5) == 0)) {
 		tTokenizer t = tokenize(str, " ");
 		if (t.numTokens < 2) {
@@ -1056,6 +1191,11 @@ int run_shell(BIO *io, int cfd)
 	struct timespec tse;
 
 	first_initialize(1);
+
+	_proj_notifier = (tNotifier *)malloc( sizeof(tNotifier) );
+	_proj_notifier[0].fd = inotify_init();
+
+	for_all_projects(_docroot, projFunc);
 
 	if (cfd == STDIN)
 		readline_init(READLINE_HISTORY_FILE_CDV);

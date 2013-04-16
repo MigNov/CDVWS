@@ -198,6 +198,42 @@ void *gIO;
 int gFd;
 #endif
 
+int _cdv_alloc_errno;
+
+#define CDV_DECLARE(var, type) \
+	type *var; \
+	int var##_count;
+
+#define CDV_INIT(var) \
+	var = NULL; \
+	var##_count = 0;
+
+#define CDV_ALLOC(var, type) \
+        if (var == NULL) { \
+		var = (type *)malloc( sizeof(type) ); \
+		if (var == NULL) \
+			_cdv_alloc_errno = ENOMEM; \
+		else \
+			var##_count = 1; \
+	} \
+        else { \
+		var = (type *)realloc( var, (var##_count + 1) * sizeof(type) ); \
+		if (var == NULL) \
+			_cdv_alloc_errno = ENOMEM; \
+		else \
+			var##_count = var##_count + 1; \
+	}
+		
+
+#define CDV_ALLOC_INDEX(var) (var##_count - 1)
+
+#define CDV_ALLOC_ERROR() _cdv_alloc_errno
+
+typedef void (tOneStrFunc)(char *str);
+typedef void (tTwoStrFunc)(char *arg1, char *arg2);
+typedef void * (tTwoStrFuncPtr)(char *arg1, char *arg2);
+tOneStrFunc projFunc;
+
 /* Timer/looper functionality */
 typedef void (tLooper)(void);
 typedef struct tTimer {
@@ -213,6 +249,61 @@ void timer_extend_iterations(tTimer *timer, int iterations, int overwrite);
 void timer_destroy(tTimer *timer);
 
 #define	BUFSIZE		8192
+
+#define	FCHECKSUM_CRC32	0x01
+
+typedef struct tFileChecksum {
+	char *filename;
+	int type;
+	uint32_t checksum;
+} tFileChecksum;
+
+#define	CDVLIST_TYPE_CHECKSUMS	0x01
+
+typedef struct tCDVList {
+	int type;
+	int count;
+	void **items;
+} tCDVList;
+
+#ifdef USE_NOTIFIER
+typedef void (tNotifyCallback)(int notifier_id, char *filename, int mask);
+
+typedef struct tNotifier {
+	int fd;
+	int wd;
+	short done;
+	char *path;
+	tNotifyCallback *callback;
+	pthread_t thread_id;
+	tCDVList *checksums;
+} tNotifier;
+#include <sys/inotify.h>
+#define INOTIFY_EVENT_SIZE ( sizeof(struct inotify_event) )
+#define INOTIFY_BUFFER_SIZE ( 512 * INOTIFY_EVENT_SIZE )
+
+#define	NOTIFY_CREATE	0x01
+#define	NOTIFY_MODIFY	0x02
+#define	NOTIFY_DELETE	0x04
+
+CDV_DECLARE(_notifiers, tNotifier);
+
+tNotifier *_proj_notifier;
+
+tNotifier *notifier_create(tNotifier *notifier, char *path, int changes_only, tNotifyCallback cb);
+int notifier_start(tNotifier *notifier);
+void notifier_stop(tNotifier *notifier);
+void notifier_destroy(tNotifier *notifier);
+void notifier_destroy_nofree(tNotifier *notifier);
+
+void notifier_pool_add(tNotifier *notifier);
+void notifier_pool_dump(void);
+void notifier_pool_free(void);
+
+#ifndef USE_THREADS
+#error "Error: Cannot use iNotifier without threads, sorry"
+#endif
+#endif
 
 #ifdef USE_INTERNAL_DB
 #define IDB_TABLES	0x01
@@ -298,6 +389,7 @@ typedef struct tProjectInformation {
 	char *admin_mail;
 	char *file_config;
 	char *dir_defs;
+	char *dir_database;
 	char *dir_views;
 	char *dir_files;
 	char *dir_scripts;
@@ -462,6 +554,7 @@ int idb_fields_num;
 int idb_tabdata_num;
 int _idb_num_queries;
 char *_idb_filename;
+int _idb_readonly;
 char *_idb_datadir;
 char *_idb_querylog;
 struct timespec _idb_last_ts;
@@ -469,6 +562,15 @@ struct timespec _idb_session_start;
 #else
 typedef void tTableDataSelect;
 #endif
+
+#define	FLOCK_CREATE	0x01
+#define	FLOCK_EXISTS	0x02
+#define	FLOCK_DELETE	0x04
+
+#define	LOCK_READ	0x100
+#define	LOCK_WRITE	0x200
+#define	LOCK_EXCLUSIVE	0x400
+#define	LOCK_ALL	0x800
 
 #define UINT32STR(var, val)     \
 	var[3] = (val >> 24) & 0xff;    \
@@ -512,6 +614,7 @@ short _script_in_condition_and_met;
 char *_handlers_path;
 char *gHost;
 char *myRealm;
+char *_docroot;
 
 /* Variable manipulation stuff */
 int variable_add_fl(char *name, char *value, int q_type, int idParent, int type, int flags);
@@ -559,7 +662,7 @@ int idb_save(char *filename);
 void idb_results_dump(tTableDataSelect tds);
 void idb_results_show(BIO *io, int cfd, tTableDataSelect tds);
 void idb_results_free(tTableDataSelect *tds);
-int idb_load(char *filename);
+int idb_load(char *filename, int readonly);
 int idb_table_drop(char *table_name);
 void idb_free_last_select_data(void);
 tTableDataSelect idb_tables_show(void);
@@ -567,6 +670,7 @@ int idb_set_compat_mode(int version);
 int idb_table_exists(char *filename, char *table_name);
 int idb_authorize(char *filename, char *table_name, char *username, char *password);
 int idb_table_alter(char *name, int type, int num_fields, tTableFieldDef *fields);
+int _idb_close(void);
 
 /* Config stuff */
 int config_initialize(void);
@@ -583,6 +687,11 @@ void config_free(void);
 int definitions_initialize(void);
 void definitions_cleanup(void);
 int definitions_load_directory(char *dir);
+
+/* Checksum utils */
+uint32_t crc_tab[256];
+void crc32_init();
+uint32_t crc32_file(char *filename, int chunkSize);
 
 /* Utils stuff */
 int initialize(void);
@@ -649,6 +758,11 @@ uint16_t generate_seed_from_string(char *str);
 uint32_t generate_hash_flags(uint16_t seed, int prepend_salt, int prepend_len);
 char *generate_hash(char *str, char *salt, int len, uint32_t flags);
 char *get_ip_address(char *ip, int *outType);
+int for_all_projects(char *docroot, tOneStrFunc tFunc);
+int lock_file_present(char *filename, int flags);
+int lock_file_create(char *filename, int flags);
+int lock_file_release(char *filename, int flags);
+int lock_file_for_file(char *filename, int flags);
 
 #ifdef USE_GEOIP
 tGeoIPInfo geoip_get_info(char *geoip_file, char *ip);

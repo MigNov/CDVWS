@@ -136,7 +136,7 @@ int test_idb(void)
 	tds = idb_table_select("table-2", 2, sel_fields, 1, where_fields);
 	idb_free();
 
-	idb_load("cdvdata/db/test.cdb");
+	idb_load("cdvdata/db/test.cdb", 1);
 	idb_dump();
 
 	idb_results_dump( tds );
@@ -238,15 +238,15 @@ void test_alloc(void)
 
 void show_info_banner(void)
 {
-	printf("CDV WebServer v%s (%s minCrypt support, %s PCRE support, %s GNU Readline support, %s Kerberos 5 support over GSS-API, "
-		"%s MySQL database support, %s GeoIP support, %s threads support)\n\n", VERSION,
+	printf("CDV WebServer v%s (%s minCrypt, %s PCRE, %s GNU Readline, %s Kerberos 5 (GSS-API), %s MySQL DB, %s GeoIP, %s threads, %s notifiers)\n\n", VERSION,
 		USE_MINCRYPT ? "with" : "without",
 		USE_PCRE ? "with" : "without",
 		USE_READLINE ? "with" : "without",
 		USE_KERBEROS ? "with" : "without",
 		USE_MYSQL ? "with" : "without",
 		USE_GEOIP ? "with" : "without",
-		USE_THREADS ? "with" : "without");
+		USE_THREADS ? "with" : "without",
+		USE_NOTIFIER ? "with" : "without");
 }
 
 void test_looper(void)
@@ -298,6 +298,51 @@ void sig_chld(int signo)
 	}
 }
 
+#ifdef USE_INTERNAL_DB
+#ifdef USE_NOTIFIER
+void projDBNotifyCB(int notifier_id, char *filename, int mask)
+{
+	char fullpath[4096] = { 0 };
+
+	strncpy(fullpath, _notifiers[notifier_id].path, sizeof(fullpath));
+	strcat(fullpath, "/");
+	strcat(fullpath, filename);
+
+	DPRINTF("File %s (%s) changed on notifier #%d (create: %d, modify: %d, delete: %d)\n",
+		filename, fullpath, notifier_id,
+			(mask & NOTIFY_CREATE) ? 1 : 0,
+			(mask & NOTIFY_MODIFY) ? 1 : 0,
+			(mask & NOTIFY_DELETE) ? 1 : 0);
+
+	if (_idb_filename != NULL) {
+		char tmp[4096] = { 0 };
+		snprintf(tmp, sizeof(tmp), "%s/%s", _docroot, _idb_filename);
+
+		if (strcmp(tmp, fullpath) == 0)
+			DPRINTF(">>> Currently opened file modified %s\n", _idb_filename);
+	}
+}
+#endif
+#endif
+
+void projFunc(char *dir)
+{
+	char *db = project_info_get("dir_database");
+
+	if (db != NULL) {
+		char tmp[4096] = { 0 };
+
+		snprintf(tmp, sizeof(tmp), "%s/%s/%s",
+			_docroot, dir, db);
+#ifdef USE_INTERNAL_DB
+#ifdef USE_NOTIFIER
+		notifier_pool_add(
+			notifier_create(_proj_notifier, tmp, 0, projDBNotifyCB) );
+#endif
+#endif
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int i = 1;
@@ -333,12 +378,24 @@ int main(int argc, char *argv[])
 
 	//signal(SIGCHLD, sig_chld);
 
+	_docroot = getenv("CDV_DOCUMENT_ROOT");
+	if (_docroot == NULL) {
+		char buf[4096] = { 0 };
+
+		getcwd(buf, sizeof(buf));
+		strcat(buf, "/examples");
+		_docroot = strdup(buf);
+	}
+
+	DPRINTF("Document root is set to %s\n", _docroot);
+
 	if ((argc > 1) && (strcmp(argv[1], "--shell") == 0)) {
 		_shell_enabled = 1;
 		return run_shell( NULL, STDIN );
 	}
 
 	first_initialize(0);
+	//for_all_projects(_docroot, projFunc);
 	if ((argc > 1) && (strcmp(argv[1], "--enable-remote-shell-only") == 0))
 		_shell_enabled = 1;
 
