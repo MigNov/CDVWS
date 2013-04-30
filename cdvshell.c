@@ -70,7 +70,7 @@ char *readline_read(char *prompt)
 	char *tmp = readline(prompt);
 
 	if ((strlen(tmp) > 0) && (strcmp(tmp, "quit") != 0)
-		&& (strcmp(tmp, "\\q") != 0))
+		&& (tmp[0] != '\\') && (tmp[0] != ':'))
 		add_history(tmp);
 
 	return tmp;
@@ -198,6 +198,9 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 			"quit\t\t\t\t- end IDB session\n"
 			"\n");
 	}
+	else
+	if (strncmp(str, "help ", 5) == 0)
+		help_idb(io, cfd, str);
 	else
 	if (strcmp(str, "pwd") == 0) {
 		char buf[1024] = { 0 };
@@ -519,18 +522,18 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"eval <line>\t\t\t\t\t\t- evaluate the script line\n"
 			"kill <pid>\t\t\t\t\t\t- terminate process <pid>, <pid> have to be child of web server\n"
 			"free\t\t\t\t\t\t\t- show information about total and free shared memory usage\n"
-			"hash <string> <salt> <len>\t\t\t\t- generate hash for <string> as based on <salt> with length of <len>\n"
-			"crc32 <filename>\t\t\t\t\t- generate CRC-32 checksum for <filename> contents\n"
 			#ifdef USE_GEOIP
 			"geoip <database-file> <ip>\t\t\t\t- get IP information for <ip> from GeoIP <database-file>\n"
 			#endif
 			#ifdef USE_NOTIFIER
-			"notifiers (show|start|stop) [index]\t\t\t- show or modify state of notifiers\n"
+			"notifiers (show|start|stop|files) [index]\t\t- show or modify state of notifiers\n"
 			#endif
 			"\n"
 			"Testing functions:\n\n"
 			"run <type> <params>\t\t\t\t\t- run <type> on shell, see \"run help\" for more information\n"
 			"stop\t\t\t\t\t\t\t- stop HTTP and HTTPS servers\n"
+			"hash <string> <salt> <len>\t\t\t\t- generate hash for <string> as based on <salt> with length of <len>\n"
+			"crc32 <filename>\t\t\t\t\t- generate CRC-32 checksum for <filename> contents\n"
 			"mime <filename>\t\t\t\t\t\t- get mime type for <filename>\n\n"
 			"Debugging/inspection functions:\n\n"
 			"p <object>\t\t\t\t\t\t- print object information\n"
@@ -546,6 +549,9 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 			"quit\t\t\t\t\t\t\t- quit shell session\n"
 			"\n");
 	}
+	else
+	if (strncmp(str, "help ", 5) == 0)
+		help(io, cfd, str);
 	else
 	if (strcmp(str, "clear history") == 0) {
 		readline_unlink(READLINE_HISTORY_FILE_CDV);
@@ -1105,7 +1111,7 @@ int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char 
 				desc_printf(io, cfd, "Invalid command. Valid commands are: show, start, stop\n");
 		}
 		else
-			desc_printf(io, cfd, "Syntax: notifiers (show|start|stop) [index]\n");
+			desc_printf(io, cfd, "Syntax: notifiers (show|start|stop|files) [index]\n");
 
 		free_tokens(t);
 	}

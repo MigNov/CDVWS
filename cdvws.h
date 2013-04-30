@@ -837,6 +837,8 @@ void wrap_mincrypt_cleanup(void);
 int run_shell(BIO *io, int cfd);
 int process_shell_command(struct timespec ts, BIO *io, int cfd, char *str, char *ua, char *path);
 int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str);
+void help(BIO *io, int cfd, char *str);
+void help_idb(BIO *io, int cfd, char *str);
 
 /* Auth functions */
 char *http_get_authorization(char *buf, char *host, char *keytab, char *kerb_realm);
