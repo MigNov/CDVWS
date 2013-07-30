@@ -34,7 +34,7 @@ void _help_idbshell(BIO *io, int cfd)
 
 void _help_set(BIO *io, int cfd)
 {
-	desc_printf(io, cfd, "Syntax: set <variable> <value>\n\nThe 'set' function is used to"
+	desc_printf(io, cfd, "Syntax: set <variable> <value>\n\nThe 'set' function is used to "
 			"set the variable to specified value. Meaning of the value is variable\n"
 			"according to the variable being accessed. Possible variables are:\n\n"
 			"dumplog <filename>\t- dumplog is used to set file where to save dump data\n"
@@ -140,7 +140,7 @@ void _help_hash(BIO *io, int cfd, char *subcmd)
 			"and/or HASH_FLAGS_PREPEND_LENGTH to the <flags>. To set both of them you can simply OR mask them like:\n\n"
 			"\tuint32_t flags = HASH_FLAGS_PREPEND_SALT | HASH_FLAGS_PREPEND_LENGTH;\n\n"
 			"If you would like to add custom seed in 16-bit range (0 to 65535) to the flags you have to add\nHASH_FLAGS_HAVE_SEED"
-			"(value 1) to the flags with your seed value shifted left by 16 bits, e.g. for your\nseed of 22530 you need to OR"
+			"(value 1) to the flags with your seed value shifted left by 16 bits, e.g. for your\nseed of 22530 you need to OR "
 			"expression above by:\n\n"
 			"\tflags |= 1 | (22530 << 16)\n\n"
 			"OR'ing by 1 (HASH_FLAGS_HAVE_SEED) is necessary to specify we have seed encoded in 16 most significant\nbits of <flags>.\n"
@@ -161,6 +161,36 @@ void _help_mime(BIO *io, int cfd)
 	desc_printf(io, cfd, "Syntax: mime <filename>\n\nThis function gets the MIME type for <filename>. This is useful to check\nwhat "
 			"the output MIME type that will be output to the client's browser.\nFunction first checks the entry in /etc/mime.types "
 			"file and if no entry\ncould be found then 'file --mime-type -b <filename>' is being executed.\n");
+}
+
+void _help_pwd(BIO *io, int cfd)
+{
+	desc_printf(io, cfd, "Syntax: pwd\n\nThis is equivalent of shell's `pwd` function implemented in CDV WebServer.\n");
+}
+
+void _help_ls(BIO *io, int cfd)
+{
+	desc_printf(io, cfd, "Syntax: ls <dir>\n\nLists all files and directories in the directory <dir>. Same as shell's `ls` command.\n");
+}
+
+void _help_time(BIO *io, int cfd)
+{
+	desc_printf(io, cfd, "Syntax: time\n\nShow current system date and time and also session time.\n");
+}
+
+void _help_info(BIO *io, int cfd)
+{
+	desc_printf(io, cfd, "Syntax: info\n\nShow basic information about shell type and user context shell is running under.\n");
+}
+
+void _help_version(BIO *io, int cfd)
+{
+	desc_printf(io, cfd, "Syntax: version\n\nShow version information about CDV WebServer system.\n");
+}
+
+void _help_quit(BIO *io, int cfd)
+{
+	desc_printf(io, cfd, "Syntax: quit\n\nQuit the webserver gracefully. Closes all connections established by web server first.\n");
 }
 
 void help(BIO *io, int cfd, char *str)
@@ -214,6 +244,24 @@ void help(BIO *io, int cfd, char *str)
 		if (strcmp(t.tokens[1], "mime") == 0)
 			_help_mime(io, cfd);
 		else
+		if (strcmp(t.tokens[1], "pwd") == 0)
+			_help_pwd(io, cfd);
+		else
+		if (strcmp(t.tokens[1], "ls") == 0)
+			_help_ls(io, cfd);
+		else
+		if (strcmp(t.tokens[1], "time") == 0)
+			_help_time(io, cfd);
+		else
+		if (strcmp(t.tokens[1], "info") == 0)
+			_help_info(io, cfd);
+		else
+		if (strcmp(t.tokens[1], "version") == 0)
+			_help_version(io, cfd);
+		else
+		if (strcmp(t.tokens[1], "quit") == 0)
+			_help_quit(io, cfd);
+		else
 			desc_printf(io, cfd, "Error: Invalid command\n\nSyntax: help <command> "
 					"[<subcommand1> ... <subcommandN>]\n");
 	}
@@ -240,15 +288,65 @@ void help(BIO *io, int cfd, char *str)
 
 void help_idb(BIO *io, int cfd, char *str)
 {
-	int i;
 	char *helpstr = trim(str);
 
 	if (strncmp(helpstr, "help ", 5) != 0)
 		return;
 
 	tTokenizer t = tokenize(helpstr, " ");
-	for (i = 1; i < t.numTokens; i++)
-		printf(">>> %d) %s\n", i, t.tokens[i]);
+	if (t.numTokens == 2) {
+		if (strcmp(t.tokens[1], "INIT") == 0)
+			desc_printf(io, cfd, "Syntax: INIT <filename> [RO]\n\nInitializes new iDB database <filename>. "
+					"Default mode is read-write, if you want to open in read-only mode put \"RO\" to end.\n");
+		else
+		if (strcmp(t.tokens[1], "REINIT") == 0)
+			desc_printf(io, cfd, "Syntax: REINIT <filename> [RO]\n\nReinitializes a iDB database <filename>. "
+					"Default mode is read-write, if you want to open in read-only mode put \"RO\" to end.\n");
+		else
+		if (strcmp(t.tokens[1], "CLOSE") == 0)
+			desc_printf(io, cfd, "Syntax: CLOSE\n\nClose database saving all of the data.\n");
+		else
+		if ((strcmp(t.tokens[1], "CREATE") == 0) || (strcmp(t.tokens[1], "SELECT") == 0) || (strcmp(t.tokens[1], "INSERT") == 0)
+			|| (strcmp(t.tokens[1], "UPDATE") == 0) || (strcmp(t.tokens[1], "DELETE") == 0) || (strcmp(t.tokens[1], "DROP") == 0)
+			|| (strcmp(t.tokens[1], "COMMIT") == 0) || (strcmp(t.tokens[1], "ROLLBACK") == 0) || (strcmp(t.tokens[1], "DUMP") == 0))
+			desc_printf(io, cfd, "SQL Commands have same meanings like the commands for the standard relational databases.\n");
+		if (strcmp(t.tokens[1], "run") == 0)
+			desc_printf(io, cfd, "Syntax: run <filename>\n\nRun a SQL command batch from <filename>\n");
+		else
+		if (strcmp(t.tokens[1], "pwd") == 0)
+			desc_printf(io, cfd, "Syntax: pwd\n\nShow current working directory. Same as shell's \"pwd\" command\n");
+		else
+		if (strcmp(t.tokens[1], "time") == 0)
+			desc_printf(io, cfd, "Syntax: time\n\nShow current iDB shell time statistics.\n");
+		else
+		if (strcmp(t.tokens[1], "quit") == 0)
+			desc_printf(io, cfd, "Syntax: quit\n\nQuit iDB shell and close iDB database gracefully. Write is not performed (use COMMIT instead).\n");
+		else
+			desc_printf(io, cfd, "Error: Invalid command\n\nSyntax: help <command> "
+				"[<subcommand1> ... <subcommandN>]\n");
+	}
+	else
+	if (t.numTokens > 2) {
+		if (strcmp(t.tokens[1], "SET") == 0) {
+			if (strcmp(t.tokens[2], "MINCRYPT") == 0)
+				desc_printf(io, cfd, "Syntax: SET MINCRYPT <password> <salt>\n\nSet the minCrypt password to be "
+					"used for data encryption/decryption. The salt have to be provided as well.\n");
+			else
+			if (strcmp(t.tokens[2], "FRESHQUERYLOG") == 0)
+				desc_printf(io, cfd, "Syntax: SET FRESHQUERYLOG <filename>\n\nSet fresh query log filename to be "
+					"saved on the <filename>. Fresh means it rewrites the log from scratch.\n");
+			else
+			if (strcmp(t.tokens[2], "QUERYLOG") == 0)
+				desc_printf(io, cfd, "Syntax: SET QUERYLOG <filename>\n\nSet query log filename to be "
+					"saved on the <filename>.\n");
+			else
+			if (strcmp(t.tokens[2], "DATADIR") == 0)
+				desc_printf(io, cfd, "Syntax: SET DATADIR <directory>\n\nSet the data directory for files\n");
+			else
+			if (strcmp(t.tokens[2], "FILENAME") == 0)
+				desc_printf(io, cfd, "Syntax: SET FILENAME <filename>\n\nSet database file name to write data to.\n");
+		}
+	}
 
 	free_tokens(t);
 }

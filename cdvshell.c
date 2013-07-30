@@ -192,7 +192,7 @@ int process_idb_command(struct timespec ts, BIO *io, int cfd, char *str)
 			"ROLLBACK\t\t\t- rollback changes\n"
 			"DUMP\t\t\t\t- dump all data\n\n"
 			"Other commands:\n\n"
-			"run\t\t\t\t- run a batch of commands (in SQL format)\n"
+			"run <filename>\t\t\t- run a batch of commands (in SQL format)\n"
 			"pwd\t\t\t\t- print current working directory\n"
 			"time\t\t\t\t- get current and IDB session time\n"
 			"quit\t\t\t\t- end IDB session\n"

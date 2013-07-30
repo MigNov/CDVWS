@@ -189,7 +189,7 @@ char *json_format_reply(tJSONVars *json_vars, int json_vars_num)
 {
 	char tmp[TCP_BUF_SIZE] = { 0 };
 
-	cdvPrintfAppend(tmp, sizeof(tmp), "{");
+	cdvPrintfAppend(tmp, sizeof(tmp), "{\n");
 	json_format_params(tmp, sizeof(tmp), json_vars, json_vars_num, 0, 2);
 	cdvPrintfAppend(tmp, sizeof(tmp), "}");
 
