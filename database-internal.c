@@ -424,6 +424,12 @@ int idb_query(char *query)
 		}
 	}
 	else
+	if (strncmp(query, "SCHEMA ", 7) == 0) {
+		DPRINTF("Table schema is: %s\n", idb_table_schema_string(query + 7));
+		desc_printf(gIO, gFd, "%s\n", idb_table_schema_string(query + 7));
+		ret = 0;
+	}
+	else
 	if (strncmp(query, "UPDATE", 6) == 0) {
 		t = tokenize(query, " ");
 		if ((t.numTokens < 3) || (strcmp(t.tokens[2], "SET") != 0))
@@ -1805,6 +1811,33 @@ int idb_table_drop(char *table_name)
 	return 0;
 }
 
+char *idb_table_schema_string(char *name)
+{
+	long i, j;
+	char ret[16384] = { 0 };
+
+	if (name == NULL)
+		return NULL;
+
+	for (i = 0; i < idb_tables_num; i++) {
+		if (strcmp(idb_tables[i].name, name) == 0) {
+			strcpy(ret, "CREATE TABLE ");
+			cdvPrintfAppend(ret, sizeof(ret), "%s(", name);
+			for (j = 0; j < idb_fields_num; j++) {
+				if (idb_tables[i].id == idb_fields[i].idTable) {
+					cdvPrintfAppend(ret, sizeof(ret), "%s %s, ",
+						idb_fields[j].name,
+						_idb_get_type(idb_fields[j].type));
+				}
+			}
+			ret[strlen(ret) - 2] = ')';
+			ret[strlen(ret) - 1] = ';';
+		}
+	}
+
+	return strdup(ret);
+}
+
 int _idb_tables_dump(void)
 {
 	long i;
@@ -2992,6 +3025,7 @@ void idb_free_last_select_data(void) {};
 int idb_table_exists(char *filename, char *table_name) { return -1; }
 int idb_authorize(char *filename, char *table_name, char *username, char *password) { return -1; }
 int idb_auth_update_hash(char *filename, char *table_name, char *username, char *hash) { return -1; }
+char *idb_table_schema_string(char *name) { return NULL; }
 int _idb_close(void) { return -1; };
 #endif
 

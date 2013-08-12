@@ -670,6 +670,7 @@ int idb_set_compat_mode(int version);
 int idb_table_exists(char *filename, char *table_name);
 int idb_authorize(char *filename, char *table_name, char *username, char *password);
 int idb_table_alter(char *name, int type, int num_fields, tTableFieldDef *fields);
+char *idb_table_schema_string(char *name);
 int _idb_close(void);
 
 /* Config stuff */

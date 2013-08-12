@@ -1012,7 +1012,7 @@ void dump_printf(const char *fmt, ...)
 int cdvPrintfAppend(char *var, int max_len, const char *fmt, ...)
 {
 	va_list ap;
-	char buf[8192] = { 0 };
+	char buf[16384] = { 0 };
 
 	va_start(ap, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, ap);
