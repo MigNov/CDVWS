@@ -279,8 +279,12 @@ void help(BIO *io, int cfd, char *str)
 			desc_printf(io, cfd, "Error: Invalid subcommand\n\nSyntax: help <command> <subcommand>\n");
 	}
 	else {
+#ifdef DEBUG_HELP
 		for (i = 1; i < t.numTokens; i++)
 			printf(">>> %d) %s\n", i, t.tokens[i]);
+#else
+		desc_printf(io, cfd, "Syntax error\n");
+#endif
 	}
 
 	free_tokens(t);
